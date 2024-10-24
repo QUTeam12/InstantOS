@@ -35,7 +35,7 @@ GET_CHECK_Loop:
 	subq.w  #1, %d4
 	bcs     END_program     /* 書き込み回数が0の時に終了 */
 	jsr     OUTQ /* 読み込み処理 */
-	move.b	%d0,(%a2)+
+	move.b	%d1,(%a2)+
 	move.l	%d0,(%a3)+
 	bra     GET_CHECK_Loop
     
@@ -51,7 +51,7 @@ INQ:
 	**	番号noのキューにデータをいれる
 	**	入力 no->d0.l	書き込む8bitdata->d1.b
 	**	出力 失敗0/成功1 ->d0.l
-	movem.l	%a0,-(%sp)	/*走行レベルの退避*/
+	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
 	
 	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
 	cmp.l	#256,s
@@ -70,7 +70,7 @@ INQ_step1:
 INQ_step2:
 	add.l	#1,s 			/*s++*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
 
 
@@ -78,7 +78,7 @@ OUTQ:
 	**	番号noのキューからデータを一つ取り出す
 	**	入力 no->d0.l
 	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
-	movem.l	%a0,-(%sp)	/*走行レベルの退避*/
+	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
 	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
 	cmp.l	#0,s
 	beq	Queue_fail		/*キューが満杯で失敗*/
@@ -96,13 +96,13 @@ OUTQ_step1:
 OUTQ_step2:
 	sub.l	#1,s 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
 
 	
 Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
-	movem.l (%sp)+,%a0		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
 	
 	
@@ -122,13 +122,11 @@ bottom:	.ds.b	1			/*キューの末尾の番地*/
 out:	.ds.l	1			/*次に取り出すデータのある番地*/
 in:	.ds.l	1 			/*次にデータを入れるべき番地*/
 s:	.ds.l	1			/*キューに溜まっているデータの数*/
-out_data:	 .ds.l 300
-out_status:	 .ds.l 300
-in_status:	 .ds.l 300
+out_data:	 .ds.l 	300
+out_status:	 .ds.l 	300
+in_status:	 .ds.l 	300
+in_data:	 .ds.l	300
 
-	
-.section .data
-in_data:	.ascii "ABCDEFGHIJKLMN"
 
 .end
 	
