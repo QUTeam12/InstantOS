@@ -1,8 +1,9 @@
 	**	queueの作成
 	.section .text
 Start:
-	movem.l	%a0,-(%sp)	/*走行レベルの退避*/
-	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	move.w 	%sr,-(%sp)	/*走行レベルの退避*/
+	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
+	movem.l	%a0,-(%sp)	/*レジスタ退避*/
 	lea.l	top0,%a0
 	move.l	%a0,in0
 	move.l  %a0,out0
@@ -11,8 +12,11 @@ Start:
 	move.l	%a0,in1
 	move.l  %a0,out1
 	move.l	#0,s1
+	movem.l (%sp)+,%a0	/*レジスタ復帰*/
+	move.w 	(%sp)+,%sr	/*走行レベルの復帰*/
+	
 
-
+**以下はテスト用関数-----------------
 
 	
 TEST:
@@ -48,8 +52,7 @@ GET_CHECK_Loop:
 END_program:
 	stop #0x2700
 
-
-
+**テスト用関数終わり--------------
 
 	
 
@@ -57,8 +60,9 @@ INQ:
 	**	番号noのキューにデータをいれる
 	**	入力 no->d0.l	書き込む8bitdata->d1.b
 	**	出力 失敗0/成功1 ->d0.l
-	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
-	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	move.w 	%sr,-(%sp)		/*走行レベルの退避*/
+	move.w 	#0x2700,%sr		/*割り込み禁止(走行レベル7)*/
+	movem.l	%a0/%a1,-(%sp)		/*レジスタ退避*/
 	cmp.l 	#0,%d0			/*キュー番号が0*/
 	beq	INQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
@@ -103,7 +107,8 @@ INQ1_step1:
 INQ1_step2:
 	add.l	#1,s1 			/*s++*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*レジスタ復帰*/
+	move.w 	(%sp)+,%sr		/*走行レベルの復帰*/
 	rts
 
 
@@ -111,8 +116,9 @@ OUTQ:
 	**	番号noのキューからデータを一つ取り出す
 	**	入力 no->d0.l
 	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
-	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
-	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	move.w 	%sr,-(%sp)		/*走行レベルの退避*/
+	move.w 	#0x2700,%sr		/*割り込み禁止(走行レベル7)*/
+	movem.l	%a0/%a1,-(%sp)		/*レジスタ退避*/
 	cmp.l 	#0,%d0			/*キュー番号が0*/
 	beq	OUTQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
@@ -137,7 +143,8 @@ OUTQ0_step1:
 OUTQ0_step2:
 	sub.l	#1,s0 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*レジスタ復帰*/
+	move.w 	(%sp)+,%sr		/*走行レベルの復帰*/
 	rts
 
 OUTQ1:	
@@ -157,13 +164,15 @@ OUTQ1_step1:
 OUTQ1_step2:
 	sub.l	#1,s1 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*レジスタ復帰*/
+	move.w 	(%sp)+,%sr		/*走行レベルの復帰*/
 	rts
 
 	
 Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	movem.l (%sp)+,%a0/%a1		/*レジスタ復帰*/
+	move.w 	(%sp)+,%sr		/*走行レベルの復帰*/
 	rts
 	
 	
