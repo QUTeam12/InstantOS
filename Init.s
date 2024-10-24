@@ -60,6 +60,26 @@
 SYS_STK:.ds.b 0x4000 | システムスタック領域
 .even
 SYS_STK_TOP: | システムスタック領域の最後尾
+*****************************************************************
+**キュー
+*****************************************************************
+top0:		.ds.b	255			/*キューの戦闘の番地*/
+bottom0:	.ds.b	1			/*キューの末尾の番地*/
+out0:		.ds.l	1			/*次に取り出すデータのある番地*/
+in0:		.ds.l	1 			/*次にデータを入れるべき番地*/
+s0:		.ds.l	1			/*キューに溜まっているデータの数*/
+
+top1:		.ds.b	255			/*キューの戦闘の番地*/
+bottom1:	.ds.b	1			/*キューの末尾の番地*/
+out1:		.ds.l	1			/*次に取り出すデータのある番地*/
+in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
+s1:		.ds.l	1			/*キューに溜まっているデータの数*/
+	
+out_data:	 .ds.l 	300
+out_status:	 .ds.l 	300
+in_status:	 .ds.l 	300
+in_data:	 .ds.l	300
+
 ***************************************************************
 ** 初期化
 ** 内部デバイスレジスタには特定の値が設定されている．
@@ -88,6 +108,19 @@ move.w #0x0038, UBAUD1 | baud rate = 230400 bps
 move.w #0x0004, TCTL1 | restart, 割り込み不可,
 | システムクロックの 1/16 を単位として計時，a
 | タイマ使用停止
+
+**キュー初期化
+	movem.l	%a0,-(%sp)	/*走行レベルの退避*/
+	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	lea.l	top0,%a0
+	move.l	%a0,in0
+	move.l  %a0,out0
+	move.l	#0,s0
+	lea.l	top1,%a0
+	move.l	%a0,in1
+	move.l  %a0,out1
+	move.l	#0,s1
+	movem.l (%sp)+,%a0      /* 走行レベルの復帰 */
 **スタックレジスタ操作
 move.w #0x1000, %SR
 bra MAIN
@@ -100,6 +133,118 @@ bra MAIN
 MAIN:
 LOOP: bra LOOP
 
+INQ:
+	**	番号noのキューにデータをいれる
+	**	入力 no->d0.l	書き込む8bitdata->d1.b
+	**	出力 失敗0/成功1 ->d0.l
+	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
+	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	cmp.l 	#0,%d0			/*キュー番号が0*/
+	beq	INQ0
+	cmp.l 	#1,%d0			/*キュー番号が1*/
+	beq	INQ1
+	jmp	Queue_fail		/*キュー番号が存在しない*/
+
+	
+INQ0:	
+	cmp.l	#256,s0
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	in0,%a0			
+	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	lea.l	bottom0,%a1
+	cmp.l	%a1,%a0
+	beq	INQ0_step1		/*in==bottomのときin=top*/
+	add.l	#1,in0			/*in++*/
+	jmp	INQ0_step2
+
+INQ0_step1:
+	move.l top0,in0
+
+INQ0_step2:
+	add.l	#1,s0 			/*s++*/
+	move.l	#1,%d0			/*成功を報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
+
+INQ1:	
+	cmp.l	#256,s1
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	in1,%a0			
+	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	lea.l	bottom1,%a1
+	cmp.l	%a1,%a0
+	beq	INQ1_step1		/*in==bottomのときin=top*/
+	add.l	#1,in1			/*in++*/
+	jmp	INQ1_step2
+
+INQ1_step1:
+	move.l top1,in1
+
+INQ1_step2:
+	add.l	#1,s1 			/*s++*/
+	move.l	#1,%d0			/*成功を報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
+
+
+OUTQ:
+	**	番号noのキューからデータを一つ取り出す
+	**	入力 no->d0.l
+	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
+	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
+	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	cmp.l 	#0,%d0			/*キュー番号が0*/
+	beq	OUTQ0
+	cmp.l 	#1,%d0			/*キュー番号が1*/
+	beq	OUTQ1
+	jmp	Queue_fail		/*キュー番号が存在しない*/
+	
+
+OUTQ0:	
+	cmp.l	#0,s0
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	out0,%a0			
+	move.b	(%a0),%d1		/*データをキューから取り出し*/
+	lea.l	bottom0,%a1
+	cmp.l	%a1,%a0
+	beq	OUTQ0_step1		/*out==bottomのときout=top*/
+	add.l	#1,out0			/*out++*/
+	jmp	OUTQ0_step2
+
+OUTQ0_step1:
+	move.l top0,out0
+
+OUTQ0_step2:
+	sub.l	#1,s0 			/*s--*/
+	move.l	#1,%d0			/*成功を報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
+
+OUTQ1:	
+	cmp.l	#0,s1
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	out1,%a0			
+	move.b	(%a0),%d1		/*データをキューから取り出し*/
+	lea.l	bottom1,%a1
+	cmp.l	%a1,%a0
+	beq	OUTQ1_step1		/*out==bottomのときout=top*/
+	add.l	#1,out1			/*out++*/
+	jmp	OUTQ1_step2
+
+OUTQ1_step1:
+	move.l top1,out1
+
+OUTQ1_step2:
+	sub.l	#1,s1 			/*s--*/
+	move.l	#1,%d0			/*成功を報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
+
+	
+Queue_fail:
+	move.l #0,%d0			/*失敗の報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
 interupt:
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	move.w URX1, %d0
@@ -112,3 +257,4 @@ sousin:
 	move.w #0x0800+'b',UTX1
 	movem.l (%sp)+,%a0-%a7/%d1-%d7
 	rte
+.end
