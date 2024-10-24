@@ -39,6 +39,19 @@
 .equ LED2, IOBASE+0x000003d
 .equ LED1, IOBASE+0x000003b
 .equ LED0, IOBASE+0x0000039
+**************
+** 推奨値
+**************
+.equ Mask_None,       0xFF3FFF
+.equ Mask_UART1,      0xFF3FFB
+.equ Mask_UART1_Timer,0xFF3FF9
+**Timer
+
+**UART1
+.equ U_Reset,   0x0000
+.equ U_Putpull, 0xE100
+.equ U_Putonly, 0xE108
+.equ U_Pullonly,0xE10C
 ***************************************************************
 ** スタック領域の確保
 ***************************************************************
@@ -61,13 +74,13 @@ lea.l SYS_STK_TOP, %SP | Set SSP
 ** 割り込みコントローラの初期化
 ****************
 move.b #0x40, IVR | ユーザ割り込みベクタ番号を0x40+level に設定．
-move.l #interupt ,0x110
-move.l #0x00ff3ffb,IMR | 送受信割り込み許可
+move.l #sousin ,0x110
+move.l #Mask_UART1,IMR | 送受信割り込み許可
 ****************
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
-move.w #0x0000, USTCNT1 | リセット
-move.w #0xe108, USTCNT1 |　受信割り込み許可
+move.w #U_Reset, USTCNT1 | リセット
+move.w #U_Pullonly, USTCNT1 |　受信割り込み許可
 move.w #0x0038, UBAUD1 | baud rate = 230400 bps
 ****************
 ** タイマ関係の初期化 (割り込みレベルは 6 に固定されている)
@@ -94,4 +107,8 @@ interupt:
 	move.w %d0,UTX1
 	movem.l (%sp)+,%a0-%a7/%d1-%d7
 	rte
-
+sousin:
+	movem.l %a0-%a7/%d1-%d7, -(%sp)
+	move.w #0x0800+'b',UTX1
+	movem.l (%sp)+,%a0-%a7/%d1-%d7
+	rte
