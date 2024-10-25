@@ -14,9 +14,7 @@ INTERPUT:
 	jmp 	INTERPUT_END
 
 INTERPUT_fail:
-	mova.w	#0xE108,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
+	move.w	#0xE108,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
 
 INTERPUT_END:	rts
-
-
 
