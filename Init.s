@@ -246,9 +246,8 @@ Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
-INTERPUT_PREPARE:
-	/* ch=%d1.L=0 */
 INTERPUT:
+	moveq.l #0,%d1
 	move.b #'1',LED7
 	movem.l (%sp)+,%a0-%a7/%d1-%d7
 	rte
@@ -269,7 +268,7 @@ HardwareInterface:
 	move.w UTX1,%d1
 	and.w #0x4000,%d1 
 	cmp #0x4000,%d1
-	beq INTERPUT /* TODO: テスト後INTERPUT_PREPAREにする */
+	beq INTERPUT
 	rte
 
 .end

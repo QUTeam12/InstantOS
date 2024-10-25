@@ -331,35 +331,34 @@
 0005ec 7000            250 	move.l #0,%d0			/*失敗の報告*/
 0005ee 4CDF 0300       251 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 0005f2 4E75            252 	rts
-                       253 INTERPUT_PREPARE:
-                       254 	/* ch=%d1.L=0 */
-                       255 INTERPUT:
-0005f4 13FC 0031       256 	move.b #'1',LED7
-       00D0 002F       256 
-0005fc 4CDF FFFE       257 	movem.l (%sp)+,%a0-%a7/%d1-%d7
-000600 4E73            258 	rte
-                       259 interupt:
-000602 48E7 7FFF       260 	movem.l %a0-%a7/%d1-%d7, -(%sp)
-000606 3039 00FF       261 	move.w URX1, %d0
-       F904            261 
-00060c 0640 0800       262 	add.w #0x0800,%d0
-000610 33C0 00FF       263 	move.w %d0,UTX1
-       F906            263 
-000616 4CDF FFFE       264 	movem.l (%sp)+,%a0-%a7/%d1-%d7
-00061a 4E73            265 	rte
-                       266 sousin:
-00061c 48E7 7FFF       267 	movem.l %a0-%a7/%d1-%d7, -(%sp)
-000620 33FC 0862       268 	move.w #0x0800+'b',UTX1
-       00FF F906       268 
-000628 4CDF FFFE       269 	movem.l (%sp)+,%a0-%a7/%d1-%d7
-00062c 4E73            270 	rte
-                       271 HardwareInterface: 
-00062e 48E7 7FFF       272 	movem.l %a0-%a7/%d1-%d7, -(%sp)
-000632 3239 00FF       273 	move.w UTX1,%d1
-       F906            273 
-000638 0241 4000       274 	and.w #0x4000,%d1 
-00063c 0C41 4000       275 	cmp #0x4000,%d1
-000640 6700 FFB2       276 	beq INTERPUT /* TODO: テスト後INTERPUT_PREPAREにする */
-000644 4E73            277 	rte
-                       278 
-                       279 .end
+                       253 INTERPUT:
+0005f4 7200            254 	moveq.l #0,%d1
+0005f6 13FC 0031       255 	move.b #'1',LED7
+       00D0 002F       255 
+0005fe 4CDF FFFE       256 	movem.l (%sp)+,%a0-%a7/%d1-%d7
+000602 4E73            257 	rte
+                       258 interupt:
+000604 48E7 7FFF       259 	movem.l %a0-%a7/%d1-%d7, -(%sp)
+000608 3039 00FF       260 	move.w URX1, %d0
+       F904            260 
+00060e 0640 0800       261 	add.w #0x0800,%d0
+000612 33C0 00FF       262 	move.w %d0,UTX1
+       F906            262 
+000618 4CDF FFFE       263 	movem.l (%sp)+,%a0-%a7/%d1-%d7
+00061c 4E73            264 	rte
+                       265 sousin:
+00061e 48E7 7FFF       266 	movem.l %a0-%a7/%d1-%d7, -(%sp)
+000622 33FC 0862       267 	move.w #0x0800+'b',UTX1
+       00FF F906       267 
+00062a 4CDF FFFE       268 	movem.l (%sp)+,%a0-%a7/%d1-%d7
+00062e 4E73            269 	rte
+                       270 HardwareInterface: 
+000630 48E7 7FFF       271 	movem.l %a0-%a7/%d1-%d7, -(%sp)
+000634 3239 00FF       272 	move.w UTX1,%d1
+       F906            272 
+00063a 0241 4000       273 	and.w #0x4000,%d1 
+00063e 0C41 4000       274 	cmp #0x4000,%d1
+000642 6700 FFB0       275 	beq INTERPUT
+000646 4E73            276 	rte
+                       277 
+                       278 .end
