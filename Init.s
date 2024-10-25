@@ -94,7 +94,7 @@ lea.l SYS_STK_TOP, %SP | Set SSP
 ** 割り込みコントローラの初期化
 ****************
 move.b #0x40, IVR | ユーザ割り込みベクタ番号を0x40+level に設定．
-move.l #sousin ,0x110
+move.l #HardwareInterface ,0x110
 move.l #Mask_UART1,IMR | 送受信割り込み許可
 ****************
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
@@ -123,6 +123,7 @@ move.w #0x0004, TCTL1 | restart, 割り込み不可,
 	movem.l (%sp)+,%a0      /* 走行レベルの復帰 */
 **スタックレジスタ操作
 move.w #0x1000, %SR
+move.w #0x0800+'a',UTX1 /* TODO: 消去(送信割り込みテスト用) */
 bra MAIN
 ***************************************************************
 **現段階での初期化ルーチンの正常動作を確認するため，最後に ’a’ を
@@ -131,7 +132,7 @@ bra MAIN
 .section .text
 .even
 MAIN:
-LOOP: bra LOOP
+	bra MAIN
 
 INQ:
 	**	番号noのキューにデータをいれる
@@ -245,6 +246,11 @@ Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
+INTERPUT:
+	moveq.l #0,%d1
+	move.b #'1',LED7
+	movem.l (%sp)+,%a0-%a7/%d1-%d7
+	rte
 interupt:
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	move.w URX1, %d0
@@ -257,4 +263,12 @@ sousin:
 	move.w #0x0800+'b',UTX1
 	movem.l (%sp)+,%a0-%a7/%d1-%d7
 	rte
+HardwareInterface: 
+	movem.l %a0-%a7/%d1-%d7, -(%sp)
+	move.w UTX1,%d1
+	and.w #0x4000,%d1 
+	cmp #0x4000,%d1
+	beq INTERPUT
+	rte
+
 .end
