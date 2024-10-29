@@ -90,13 +90,13 @@ lea.l SYS_STK_TOP, %SP 			| Set SSP
 ****************
 move.b #0x40, IVR 				| ユーザ割り込みベクタ番号を0x40+level に設定．
 move.l #HardwareInterface ,0x110| 送受信割込みを設定
-move.l #Mask_UART1,IMR 			| 送受信割り込み許可
+move.l #Mask_None,IMR 			| All Mask
 
 ****************
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
 move.w #U_Reset, USTCNT1 		| リセット
-move.w #U_Pullonly, USTCNT1 	|受信割り込み許可
+move.w #U_PutPull, USTCNT1 	    |受信送信可能
 move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
 
 ****************
@@ -120,8 +120,41 @@ move.l	#0,s1
 bra MAIN
 
 MAIN:
+    jsr Put
+    move.w #0x2000,%SR
+    move.l #Mask_UART1,IMR 			| All Mask
+    move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
 Loop:
 	bra Loop
+
+********INTERPUTの動作テスト
+********キューに文字を格納する
+Put:
+    movem.l %d0-%d2 -(%sp)
+    move.w #0x61, %d1  |d0='a'
+    movei #16, %d2
+PutLoop:
+    movei #1,%d0
+    jsr INQ
+    cmpi #0,%d0
+    beq EndPut
+    subq #1 , %d2
+    beq EndPutLoop
+EndPutLoop:
+    addi #1,%d1
+    movei #16,%d2
+    bra PutLoop
+
+EndPut:
+    move.l top1,%d2
+    move.l %d2,out1
+    move.l #256, s1
+    movem.l (%sp)+,%d0-%d2 
+    rts
+
+
+
+
 
 INQ:
 	**	番号noのキューにデータをいれる
@@ -235,29 +268,36 @@ Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
+
+/* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
+入力：ch->%D1.l */
 INTERPUT:
-	moveq.l #0,%d1
-	move.b #'1',LED7
-	movem.l (%sp)+,%a0-%a7/%d1-%d7
-	rte
-interupt:
-	movem.l %a0-%a7/%d1-%d7, -(%sp)
-	move.w URX1, %d0
-	add.w #0x0800,%d0
-	move.w %d0,UTX1
-	movem.l (%sp)+,%a0-%a7/%d1-%d7
-	rte
-sousin:
-	movem.l %a0-%a7/%d1-%d7, -(%sp)
-	move.w #0x0800+'b',UTX1
-	movem.l (%sp)+,%a0-%a7/%d1-%d7
-	rte
+	move.w	#0x2700,%SR 	/*割り込み禁止（走行レベルを７に設定）*/
+	cmp.l 	#0,%d1
+	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
+    movei #1 , %d0          /* キュー1を選択
+	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
+	cmp.l	#0,%d0
+	beq	INTERPUT_fail
+
+	add.w	#0x0800,%d1
+	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
+	jmp 	INTERPUT_END
+INTERPUT_fail:
+	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
+INTERPUT_END:	rts
+
 HardwareInterface: 
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	move.w UTX1,%d1
-	and.w #0x4000,%d1 
-	cmp #0x4000,%d1
+	and.w #0x8000,%d1 
+	cmp #0x8000,%d1
 	beq INTERPUT
+    movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
-
+INTERPUT_PREPARE:
+    movei.l #0, %d1
+    jsr INTERPUT
+    movem.l (%sp)+,%a0-%a7/%d1-%d7
+    rte
 .end
