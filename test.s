@@ -164,7 +164,8 @@ end_program:
 	move.l	#1,%d1
 	move.w	#0xE10C,USTCNT1	/*送信割り込み許可にして復帰*/
 	movem.l	(%sp)+,%a0/%a1
-	move.w #0x1000, %SR
+Loop:
+	jmp Loop
 	stop #0x2700
 
 
@@ -196,7 +197,7 @@ INQ0_step1:
 	move.l top0,in0
 
 INQ0_step2:
-	add.l	#1,s0 			/*s++*/
+	add.l	#1,s0			/*s++*/
 	move.l	#1,%d0			/*成功を報告*/
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
@@ -222,21 +223,55 @@ INQ1_step2:
 	rts
 
 
+
+
+/* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
+入力：ch->%D1.l */
+HardwareInterface: 
+	movem.l %a0-%a7/%d1-%d7, -(%sp)
+	move.w UTX1,%d1
+	andi.w #0x8000,%d1 
+	cmp #0x8000,%d1
+	beq INTERPUT_PREPARE
+	movem.l (%sp)+,%a0-%a7/%d1-%d7	
+	rte
+INTERPUT_PREPARE:
+	moveq #0,%d1
+	jmp INTERPUT
+INTERPUT:
+	move.w	#0x2700,%sr 	/*割り込み禁止（走行レベルを７に設定）*/
+	cmp.l 	#0,%d1
+	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
+	move.l	#1,%d0
+	jsr	OUTQ		/*data->%D1.b  %D0に結果を格納*/|ここが怪しい
+	move.b #'k',LED4
+	cmp.l	#0,%d0
+	beq	INTERPUT_fail
+	move.b #'y',LED2
+	addi.w	#0x0800,%d1
+	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/	
+	jmp 	INTERPUT_END
+INTERPUT_fail:
+	move.w	#0xE108,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
+INTERPUT_END:
+	movem.l (%sp)+,%a0-%a7/%d1-%d7	
+	move.b #'o',LED1
+	rte
 OUTQ:
 	**	番号noのキューからデータを一つ取り出す
 	**	入力 no->d0.l
 	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
 	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
 	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
-	cmp.l 	#0,%d0			/*キュー番号が0*/
+	cmpi.l 	#0,%d0			/*キュー番号が0*/
 	beq	OUTQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
 	beq	OUTQ1
-	jmp	Queue_fail		/*キュー番号が存在しない*/
+	bra	Queue_fail		/*キュー番号が存在しない*/
 	
 
 OUTQ0:	
-	cmp.l	#0,s0
+	cmpi.l	#0,s0
 	beq	Queue_fail		/*キューが満杯で失敗*/
 	move.l	out0,%a0			
 	move.b	(%a0),%d1		/*データをキューから取り出し*/
@@ -244,7 +279,7 @@ OUTQ0:
 	cmp.l	%a1,%a0
 	beq	OUTQ0_step1		/*out==bottomのときout=top*/
 	add.l	#1,out0			/*out++*/
-	jmp	OUTQ0_step2
+	bra	OUTQ0_step2
 
 OUTQ0_step1:
 	move.l top0,out0
@@ -256,6 +291,8 @@ OUTQ0_step2:
 	rts
 
 OUTQ1:	
+	move #1,s1
+	move.b #'1',LED0
 	cmp.l	#0,s1
 	beq	Queue_fail		/*キューが満杯で失敗*/
 	move.l	out1,%a0			
@@ -264,7 +301,7 @@ OUTQ1:
 	cmp.l	%a1,%a0
 	beq	OUTQ1_step1		/*out==bottomのときout=top*/
 	add.l	#1,out1			/*out++*/
-	jmp	OUTQ1_step2
+	bra	OUTQ1_step2
 
 OUTQ1_step1:
 	move.l top1,out1
@@ -272,52 +309,14 @@ OUTQ1_step1:
 OUTQ1_step2:
 	sub.l	#1,s1 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
+	move.b #'2',LED0
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
-
-	
 Queue_fail:
+	move.b #'f',LED7
 	move.l #0,%d0			/*失敗の報告*/
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
-
-/* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
-入力：ch->%D1.l */
-INTERPUT_PREPARE:
-	moveq #0,%d1
-	jmp INTERPUT
-INTERPUT:
-	move.w	#0x2700,%sr 	/*割り込み禁止（走行レベルを７に設定）*/
-	cmp.l 	#0,%d1
-	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-	move.b #'1',LED0
-	jsr	OUTQ		/*data->%D1.b  %D0に結果を格納*/|ここが怪しい
-	cmp.l	#0,%d0
-	beq	INTERPUT_fail
-	addi.w	#0x0800,%d1
-	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
-		
-	jmp 	INTERPUT_END
-INTERPUT_fail:
-	move.w	#0xE108,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
-INTERPUT_END:
-	movem.l (%sp)+,%a0-%a7/%d1-%d7
-	rte
-	
-	
-sousin:
-	movem.l %a0-%a7/%d1-%d7, -(%sp)
-	move.w #0x0800+'b',UTX1
-	movem.l (%sp)+,%a0-%a7/%d1-%d7
-	rte
-HardwareInterface: 
-	movem.l %a0-%a7/%d1-%d7, -(%sp)
-	move.w UTX1,%d1
-	andi.w #0x8000,%d1 
-	cmp #0x8000,%d1
-	beq INTERPUT_PREPARE
-	rte
-
 
 .section .data
 
