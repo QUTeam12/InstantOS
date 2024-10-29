@@ -49,9 +49,9 @@
 
 **UART1
 .equ U_Reset,   0x0000
-.equ U_Putpull, 0xE100
-.equ U_Putonly, 0xE108
-.equ U_Pullonly,0xE10C
+.equ U_Nonw, 0xE100
+.equ U_PutOnly, 0xE108
+.equ U_PutPull,0xE10C
 ***************************************************************
 ** スタック領域の確保
 ***************************************************************
@@ -100,7 +100,7 @@ move.l #Mask_UART1,IMR | 送受信割り込み許可
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
 move.w #U_Reset, USTCNT1 | リセット
-move.w #U_Pullonly, USTCNT1 |　受信割り込み許可
+move.w #U_PutPull, USTCNT1 |　受信割り込み許可
 move.w #0x0038, UBAUD1 | baud rate = 230400 bps
 ****************
 ** タイマ関係の初期化 (割り込みレベルは 6 に固定されている)
@@ -130,7 +130,7 @@ bra MAIN
 .section .text
 .even
 MAIN:
-	move.w #0x2000, %SR
+	move.w 	#0x0000,%sr		/*(走行レベル0)*/
 	jmp inter_put_test
 	bra MAIN
 
@@ -160,67 +160,15 @@ end_program:
 	move.l	top1,%d2
 	move.l 	%d2,out1
 	move.l	#256,s1
-	move.w 	#0x2000,%sr		/*(走行レベル0)*/
 	move.l	#1,%d1
-	move.w	#0xE10C,USTCNT1	/*送信割り込み許可にして復帰*/
 	movem.l	(%sp)+,%a0/%a1
+	move.w 	#0x2000,%sr		/*(走行レベル0)*/
 Loop:
 	jmp Loop
 	stop #0x2700
 
 
-INQ:
-	**	番号noのキューにデータをいれる
-	**	入力 no->d0.l	書き込む8bitdata->d1.b
-	**	出力 失敗0/成功1 ->d0.l
-	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
-	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
-	cmp.l 	#0,%d0			/*キュー番号が0*/
-	beq	INQ0
-	cmp.l 	#1,%d0			/*キュー番号が1*/
-	beq	INQ1
-	jmp	Queue_fail		/*キュー番号が存在しない*/
 
-	
-INQ0:	
-	cmp.l	#256,s0
-	beq	Queue_fail		/*キューが満杯で失敗*/
-	move.l	in0,%a0			
-	move.b	%d1,(%a0)		/*データをキューに書き込み*/
-	lea.l	bottom0,%a1
-	cmp.l	%a1,%a0
-	beq	INQ0_step1		/*in==bottomのときin=top*/
-	add.l	#1,in0			/*in++*/
-	jmp	INQ0_step2
-
-INQ0_step1:
-	move.l top0,in0
-
-INQ0_step2:
-	add.l	#1,s0			/*s++*/
-	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
-	rts
-
-INQ1:	
-	cmp.l	#256,s1
-	beq	Queue_fail		/*キューが満杯で失敗*/
-	move.l	in1,%a0			
-	move.b	%d1,(%a0)		/*データをキューに書き込み*/
-	lea.l	bottom1,%a1
-	cmp.l	%a1,%a0
-	beq	INQ1_step1		/*in==bottomのときin=top*/
-	add.l	#1,in1			/*in++*/
-	jmp	INQ1_step2
-
-INQ1_step1:
-	move.l top1,in1
-
-INQ1_step2:
-	add.l	#1,s1 			/*s++*/
-	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
-	rts
 
 
 
@@ -318,6 +266,58 @@ Queue_fail:
 	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
 	rts
 
+INQ:
+	**	番号noのキューにデータをいれる
+	**	入力 no->d0.l	書き込む8bitdata->d1.b
+	**	出力 失敗0/成功1 ->d0.l
+	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
+	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	cmp.l 	#0,%d0			/*キュー番号が0*/
+	beq	INQ0
+	cmp.l 	#1,%d0			/*キュー番号が1*/
+	beq	INQ1
+	jmp	Queue_fail		/*キュー番号が存在しない*/
+
+	
+INQ0:	
+	cmp.l	#256,s0
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	in0,%a0			
+	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	lea.l	bottom0,%a1
+	cmp.l	%a1,%a0
+	beq	INQ0_step1		/*in==bottomのときin=top*/
+	add.l	#1,in0			/*in++*/
+	jmp	INQ0_step2
+
+INQ0_step1:
+	move.l top0,in0
+
+INQ0_step2:
+	add.l	#1,s0			/*s++*/
+	move.l	#1,%d0			/*成功を報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
+
+INQ1:	
+	cmp.l	#256,s1
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	in1,%a0			
+	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	lea.l	bottom1,%a1
+	cmp.l	%a1,%a0
+	beq	INQ1_step1		/*in==bottomのときin=top*/
+	add.l	#1,in1			/*in++*/
+	jmp	INQ1_step2
+
+INQ1_step1:
+	move.l top1,in1
+
+INQ1_step2:
+	add.l	#1,s1 			/*s++*/
+	move.l	#1,%d0			/*成功を報告*/
+	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	rts
 .section .data
 
 ABC:	.dc.b 'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p',0
