@@ -122,8 +122,6 @@ move.w #0x0004, TCTL1 | restart, 割り込み不可,
 	move.l	#0,s1
 	movem.l (%sp)+,%a0      /* 走行レベルの復帰 */
 **スタックレジスタ操作
-move.w #0x1000, %SR
-move.w #0x0800,UTX1 /* TODO: 消去(送信割り込みテスト用) */
 bra MAIN
 ***************************************************************
 **現段階での初期化ルーチンの正常動作を確認するため，最後に ’a’ を
@@ -166,6 +164,7 @@ end_program:
 	move.l	#1,%d1
 	move.w	#0xE10C,USTCNT1	/*送信割り込み許可にして復帰*/
 	movem.l	(%sp)+,%a0/%a1
+	move.w #0x1000, %SR
 	stop #0x2700
 
 
@@ -284,15 +283,20 @@ Queue_fail:
 
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
+INTERPUT_PREPARE:
+	moveq #0,%d1
+	jmp INTERPUT
 INTERPUT:
 	move.w	#0x2700,%sr 	/*割り込み禁止（走行レベルを７に設定）*/
 	cmp.l 	#0,%d1
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-	jsr	OUTQ		/*data->%D1.b  %D0に結果を格納*/
+	move.b #'1',LED0
+	jsr	OUTQ		/*data->%D1.b  %D0に結果を格納*/|ここが怪しい
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
-	ori.w	#0x0800,%d1
+	addi.w	#0x0800,%d1
 	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
+		
 	jmp 	INTERPUT_END
 INTERPUT_fail:
 	move.w	#0xE108,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
@@ -311,7 +315,7 @@ HardwareInterface:
 	move.w UTX1,%d1
 	andi.w #0x8000,%d1 
 	cmp #0x8000,%d1
-	beq INTERPUT
+	beq INTERPUT_PREPARE
 	rte
 
 
