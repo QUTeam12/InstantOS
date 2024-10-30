@@ -96,7 +96,7 @@ move.l #Mask_None,IMR 			| All Mask
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
 move.w #U_Reset, USTCNT1 		| リセット
-move.w #U_PutPull, USTCNT1 	    |受信送信可能
+move.w #U_Putpull, USTCNT1 	    |受信送信可能
 move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
 
 ****************
@@ -109,6 +109,7 @@ move.w #0x0004, TCTL1 | restart, 割り込み不可,
 *****************
 **キュー初期化
 *****************
+
 lea.l	top0,%a0
 move.l	%a0,in0
 move.l  %a0,out0
@@ -124,13 +125,15 @@ MAIN:
     move.w #0x2000,%SR
     move.l #Mask_UART1,IMR 			| All Mask
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
+    move.b #'S',LED0
 Loop:
+	**jmp HardwareInterface
 	bra Loop
 
 ********INTERPUTの動作テスト
 ********キューに文字を格納する
 Put:
-    movem.l %d0-%d2 -(%sp)
+    movem.l %d0-%d2, -(%sp)
     move.b #0x61, %d1  |d0='a'
     move.b #16, %d2
 PutLoop:
@@ -140,14 +143,13 @@ PutLoop:
     beq EndPut
     subq.b #1 , %d2
     beq EndPutLoop
+    bra PutLoop
 EndPutLoop:
     addi.b #1,%d1
     move.b #16,%d2
     bra PutLoop
 
 EndPut:
-    move.l top1,%d2
-    move.l %d2,out1
     move.l #256, s1
     movem.l (%sp)+,%d0-%d2 
     rts
@@ -160,10 +162,9 @@ INQ:
 	**	番号noのキューにデータをいれる
 	**	入力 no->d0.l	書き込む8bitdata->d1.b
 	**	出力 失敗0/成功1 ->d0.l
-	movem.l	%a0/%a1/d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
-	move.w 	%sr,%d2				/*srの値を一時退避*/
+	movem.l	%a0/%a1/%d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
 	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
-	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d0			/*キュー番号が0*/
 	beq	INQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
@@ -218,10 +219,9 @@ OUTQ:
 	**	番号noのキューからデータを一つ取り出す
 	**	入力 キューの番号->d0.l
 	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
-	movem.l	%a0/%a1/d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
-	move.w 	%sr,%d2				/*srの値を一時退避*/
+	movem.l	%a0/%a1/%d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
-	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d0			/*キュー番号が0*/
 	beq	OUTQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
@@ -281,20 +281,20 @@ Queue_fail:
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
 INTERPUT:
-	move.w 	%sr,%d2				/*srの値を一時退避*/
+	move.b #'I',LED2
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
-	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d1
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-    move.l #1 , %d0          /* キュー1を選択
+    	move.l #1 , %d0          /* キュー1を選択 */
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
-	and.l 	#$000000FF, %d1 /*byte型のd1の前にあるいらない数字を削除*/
 	add.w	#0x0800,%d1
 	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
 	jmp 	INTERPUT_END
 INTERPUT_fail:
+	move.b #'F',LED3
 	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	rts
@@ -303,11 +303,13 @@ INTERPUT_END:
 	rts
 
 HardwareInterface: 
+	move.b #'H',LED1
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	move.w UTX1,%d1
-	and.w #0x8000,%d1 /*これ(and)あっってる？？？？？？*/
+	**move #0x8000,%d1
+	and.w #0x8000,%d1 
 	cmp #0x8000,%d1
-	beq INTERPUT
+	beq INTERPUT_PREPARE
     movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
 INTERPUT_PREPARE:
