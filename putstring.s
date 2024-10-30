@@ -37,6 +37,6 @@ PUTSTRING_STEP2:
 	move.l %d4,%d0
 
 PUTSTRING_END:
-	movem.l	(%sp)+,%a4/%a0
+	movem.l	(%sp)+,%d4/%a0
 	rte
 	
