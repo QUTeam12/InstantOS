@@ -5,7 +5,9 @@
 **戻り値：実際に送信したデータ数 sz->d0.l
 ******************************************************************************
 PUTSTRING:
-	movem.l	%d4/%a0,-(%sp)
+	movem.l	%a0/%d4,-(%sp)
+	move.w 	%sr,-(%sp)			/*走行レベル退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
 	bne	PUTSTRING_END 	/*ch≠0なら何もせず復帰*/
@@ -37,6 +39,7 @@ PUTSTRING_STEP2:
 	move.l %d4,%d0
 
 PUTSTRING_END:
-	movem.l	(%sp)+,%d4/%a0
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
+	movem.l	(%sp)+,%a0/%d4
 	rte
 	
