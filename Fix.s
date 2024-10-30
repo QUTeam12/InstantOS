@@ -132,9 +132,9 @@ Loop:
 Put:
     movem.l %d0-%d2 -(%sp)
     move.b #0x61, %d1  |d0='a'
-    movei.b #16, %d2
+    move.b #16, %d2
 PutLoop:
-    movei.l #1,%d0
+    move.l #1,%d0
     jsr INQ
     cmpi.l #0,%d0
     beq EndPut
@@ -142,7 +142,7 @@ PutLoop:
     beq EndPutLoop
 EndPutLoop:
     addi.b #1,%d1
-    movei.b #16,%d2
+    move.b #16,%d2
     bra PutLoop
 
 EndPut:
@@ -286,7 +286,7 @@ INTERPUT:
 	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d1
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-    movei.l #1 , %d0          /* キュー1を選択
+    move.l #1 , %d0          /* キュー1を選択
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
@@ -311,7 +311,7 @@ HardwareInterface:
     movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
 INTERPUT_PREPARE:
-    movei.l #0, %d1
+    move.l #0, %d1
     jsr INTERPUT
     movem.l (%sp)+,%a0-%a7/%d1-%d7
     rte
