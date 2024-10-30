@@ -1,5 +1,5 @@
 	**	queueの作成
-	.section .text
+.section .text
 Start:
 	move.w 	%sr,-(%sp)	/*走行レベルの退避*/
 	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
@@ -126,7 +126,7 @@ OUTQ:
 	jmp	Queue_fail		/*キュー番号が存在しない*/
 	
 
-OUTQ0:	
+OUTQ0:
 	cmp.l	#0,s0
 	beq	Queue_fail		/*キューが満杯で失敗*/
 	move.l	out0,%a0			
