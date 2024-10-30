@@ -131,18 +131,18 @@ Loop:
 ********キューに文字を格納する
 Put:
     movem.l %d0-%d2 -(%sp)
-    move.w #0x61, %d1  |d0='a'
-    movei #16, %d2
+    move.b #0x61, %d1  |d0='a'
+    movei.b #16, %d2
 PutLoop:
-    movei #1,%d0
+    movei.l #1,%d0
     jsr INQ
-    cmpi #0,%d0
+    cmpi.l #0,%d0
     beq EndPut
-    subq #1 , %d2
+    subq.b #1 , %d2
     beq EndPutLoop
 EndPutLoop:
-    addi #1,%d1
-    movei #16,%d2
+    addi.b #1,%d1
+    movei.b #16,%d2
     bra PutLoop
 
 EndPut:
@@ -160,8 +160,10 @@ INQ:
 	**	番号noのキューにデータをいれる
 	**	入力 no->d0.l	書き込む8bitdata->d1.b
 	**	出力 失敗0/成功1 ->d0.l
-	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
-	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	movem.l	%a0/%a1/d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,%d2				/*srの値を一時退避*/
+	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
+	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d0			/*キュー番号が0*/
 	beq	INQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
@@ -186,7 +188,8 @@ INQ0_step1:
 INQ0_step2:
 	add.l	#1,s0 			/*s++*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 INQ1:	
@@ -206,16 +209,19 @@ INQ1_step1:
 INQ1_step2:
 	add.l	#1,s1 			/*s++*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 
 OUTQ:
 	**	番号noのキューからデータを一つ取り出す
-	**	入力 no->d0.l
+	**	入力 キューの番号->d0.l
 	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
-	movem.l	%a0/%a1,-(%sp)	/*走行レベルの退避*/
-	move.w 	#0x2700,%SR		/*割り込み禁止(走行レベル7)*/
+	movem.l	%a0/%a1/d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,%d2				/*srの値を一時退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
+	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d0			/*キュー番号が0*/
 	beq	OUTQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
@@ -240,7 +246,8 @@ OUTQ0_step1:
 OUTQ0_step2:
 	sub.l	#1,s0 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 OUTQ1:	
@@ -260,37 +267,45 @@ OUTQ1_step1:
 OUTQ1_step2:
 	sub.l	#1,s1 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 	
 Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
-	movem.l (%sp)+,%a0/%a1		/*走行レベルの回復*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
 INTERPUT:
-	move.w	#0x2700,%SR 	/*割り込み禁止（走行レベルを７に設定）*/
+	move.w 	%sr,%d2				/*srの値を一時退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
+	move.w  %d2, -(%sp)			/*スーパースタックに走行レベルの退避*/
 	cmp.l 	#0,%d1
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-    movei #1 , %d0          /* キュー1を選択
+    movei.l #1 , %d0          /* キュー1を選択
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
-
+	and.l 	#$000000FF, %d1 /*byte型のd1の前にあるいらない数字を削除*/
 	add.w	#0x0800,%d1
 	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
 	jmp 	INTERPUT_END
 INTERPUT_fail:
 	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
-INTERPUT_END:	rts
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	rts
+INTERPUT_END:
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	rts
 
 HardwareInterface: 
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	move.w UTX1,%d1
-	and.w #0x8000,%d1 
+	and.w #0x8000,%d1 /*これ(and)あっってる？？？？？？*/
 	cmp #0x8000,%d1
 	beq INTERPUT
     movem.l (%sp)+,%a0-%a7/%d1-%d7 
