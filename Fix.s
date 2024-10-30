@@ -127,7 +127,7 @@ MAIN:
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
     move.b #'S',LED0
 Loop:
-	**jmp HardwareInterface
+	**jmp HardwareInterface /* TODO: debug用。後で消す */
 	bra Loop
 
 ********INTERPUTの動作テスト
@@ -271,11 +271,17 @@ OUTQ1_step2:
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
-	
 Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
+	rts
+
+INTERGET:
+	add.w #0x0800,%d2
+	move.w  %d2,UTX1
+	move.b #'1',LED7
+	movem.l (%sp)+,%a0-%a7/%d1-%d7
 	rts
 
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
@@ -305,16 +311,26 @@ INTERPUT_END:
 HardwareInterface: 
 	move.b #'H',LED1
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
+	move.w URX1,%d3
+	move.b %d3,%d2 /* data = %d2.b */
+	andi.w #0x2000,%d3
+	cmpi.w #0x2000,%d3 /* URX1の13bit目が1の場合INTERGET呼び出し */
+	beq INTERGET_PREPARE
 	move.w UTX1,%d1
 	**move #0x8000,%d1
 	and.w #0x8000,%d1 
 	cmp #0x8000,%d1
 	beq INTERPUT_PREPARE
-    movem.l (%sp)+,%a0-%a7/%d1-%d7 
+        movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
+INTERGET_PREPARE:
+	moveq.l #0,%d1 /* ch = %d1.l = 0 */
+	jsr INTERGET
+    	movem.l (%sp)+,%a0-%a7/%d1-%d7
+    	rte
 INTERPUT_PREPARE:
-    move.l #0, %d1
-    jsr INTERPUT
-    movem.l (%sp)+,%a0-%a7/%d1-%d7
-    rte
+    	move.l #0, %d1
+    	jsr INTERPUT
+    	movem.l (%sp)+,%a0-%a7/%d1-%d7
+    	rte
 .end
