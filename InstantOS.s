@@ -102,6 +102,7 @@ lea.l SYS_STK_TOP, %SP 			| Set SSP
 ** 割り込みコントローラの初期化
 ****************
 move.b #0x40, IVR 				| ユーザ割り込みベクタ番号を0x40+level に設定．
+move.l #SYSCALL_INTERFACE, 0x080 | システムコールを設定
 move.l #HardwareInterface ,0x110| 送受信割込みを設定
 move.l #TimerInterface, 0x118 | タイマ割り込みの設定
 move.l #Mask_None,IMR 			| All Mask
@@ -161,9 +162,9 @@ MAIN:
     **jmp	INQ_OUTQ_TEST
     move.l #Mask_UART1_Timer,IMR 			| All UnMask
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
-    move.w #0xE108,USTCNT1			|受信割り込みのみ許可
+    move.w #0xE110,USTCNT1			|受信割り込みのみ許可
     **jsr	PUTSTRING_TEST
-   jsr		GETSTRING_TEST
+    **jsr	GETSTRING_TEST
     move.b #'S',LED0
 Loop:
 	**jmp HardwareInterface			/* シミュレータテスト用 */
@@ -224,7 +225,8 @@ PUTSTRING_TEST:
 	lea.l 	TDATA1,%a2
 	move.l	%a2,%d2
 	move.l 	#16,%d3
-	jsr	PUTSTRING
+	move.l #2,%d0
+	trap #0
 	move.l	#1000,%d4
 	
 PUTSTRING_TEST_LOOP:
@@ -237,7 +239,8 @@ PUTSTRING_TEST2:
 	lea.l 	TDATA2,%a2
 	move.l	%a2,%d2
 	move.l 	#16,%d3
-	jsr	PUTSTRING
+	move.l #2,%d0
+	trap #0
 	move.l	#1000,%d4
 	jmp	PUTSTRING_TEST_LOOP3
 	jmp	PUTSTRING_TEST2
@@ -600,6 +603,7 @@ CALL_RP:
 **入力：システムコール番号->%d0.l　システムコール引数->%d1以降
 ****************************************************************
 SYSCALL_INTERFACE:
+	move.b #'S', LED0
 	cmp.l #1,%d0
 	beq   CALL_GETSTRING
 
@@ -611,24 +615,22 @@ SYSCALL_INTERFACE:
 
 	cmp.l #4,%d0
 	beq   CALL_SET_TIMER
+	
+	rte
 
 CALL_GETSTRING:
-	lea.l GETSTRING,%a0
-	move.l %a0,%d0
+	jsr GETSTRING
 	rte
 
 CALL_PUTSTRING:
-	lea.l PUTSTRING,%a0
-	move.l %a0,%d0
+	jsr PUTSTRING
 	rte
 	
 CALL_RESET_TIMER:
-	lea.l RESET_TIMER,%a0
-	move.l %a0,%d0
+	jsr RESET_TIMER
 	rte
 	
 CALL_SET_TIMER:
-	lea.l SET_TIMER,%a0
-	move.l %a0,%d0
+	jsr SET_TIMER
 	rte
 .end
