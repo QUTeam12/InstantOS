@@ -42,3 +42,4 @@ PUTSTRING_END:
 	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
+
