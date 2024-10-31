@@ -75,7 +75,7 @@ out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s1:		.ds.l	1			/*キューに溜まっているデータの数*/
 
-
+WORK:		.ds.b 256			/* 受信制御部テスト　*/
 .section .data
 **putstring test用のデータ
 
@@ -138,12 +138,36 @@ MAIN:
     move.l #Mask_UART1,IMR 			| All Mask
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
     move.w #0xE108,USTCNT1			|受信割り込みのみ許可
-    jsr	PUTSTRING_TEST
+    **jsr	PUTSTRING_TEST
+    jsr		GETSTRING_TEST
     move.b #'S',LED0
 Loop:
 	**jmp HardwareInterface
 	bra Loop
-
+********受信制御部のテスト
+GETSTRING_TEST:
+	move.b #'T',LED5
+	move.l	#0xfffff,%d4
+GETSTRING_TEST_LOOP:
+	sub.l	#1,%d4
+	beq	GETSTRING_TEST2
+	jmp	GETSTRING_TEST_LOOP
+GETSTRING_TEST2:
+	moveq #0 , %d1
+	lea.l WORK, %a0
+	move.l %a0, %d2
+	move.l #256, %d3
+	move.b #'G',LED7
+	jsr GETSTRING
+	move.l %d0, %d3
+	moveq #0 , %d1
+	lea.l WORK, %a0
+	move.l %a0, %d2
+	move.b #'P',LED6
+	jsr PUTSTRING
+	move.b #'S',LED5
+	jmp GETSTRING_TEST
+	
 ********INTERPUTの動作テスト
 ********キューに文字を格納する
 Put:
@@ -364,10 +388,26 @@ Queue_fail:
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
+ 
+***************************************************
+**INTERGET(ch,data)　受信データを受信キューに格納する
+**入力：ch->%d1.l data->%d2.b
+***************************************************
 INTERGET:
-	move.b #'1',LED7
-	rts
+	move.w 	%sr,-(%sp)	/*srの値を一時退避*/
+	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
+	cmp.l 	#0,%d1
+	bne	INTERGET_END	/*chが0でないなら何もせずに復帰*/
 	
+    	move.l	#0,%d0          /* キュー0を選択 */
+	move.b	%d2,%d1		
+	jsr	INQ		/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
+
+INTERGET_END:
+	move.w  (%sp)+, %sr	/*スーパースタックから走行レベル回復*/
+	rts
+
+
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
 INTERPUT:
@@ -433,6 +473,47 @@ PUTSTRING_STEP2:
 	move.l %d4,%d0
 
 PUTSTRING_END:
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
+	movem.l	(%sp)+,%a0/%d4
+	rts
+
+
+ ******************************************************************************
+** GETSTRING(ch, p, size)
+**chの受信キューからsizeバイトのデータを取り出し、p番地以降にコピーする
+**入力： ch->%d1.l  p->%d2.l  size->%d3.l
+**戻り値：読みだしたデータ数 sz->d0.l
+******************************************************************************
+GETSTRING:
+	movem.l	%a0/%d4,-(%sp)
+	move.w 	%sr,-(%sp)			/*走行レベル退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
+	
+	cmp.l	#0,%d1
+	bne	GETSTRING_END 	/*ch≠0なら何もせず復帰*/
+
+	move.l	#0,%d4		/*sz->%d4*/
+	movea.l %d2,%a0 	/*i->a0*/ 
+	
+GETSTRING_LOOP:
+	cmp.l	%d4,%d3
+	beq	GETSTRING_STEP1 /*sz=sizeなら分岐*/
+
+	move.l	#0,%d0
+	jsr	OUTQ 
+	
+	cmp.l	#0,%d0
+	beq	GETSTRING_STEP1 /*OUTQが失敗なら分岐*/
+	move.b %d1,(%a0)	/*i番地にデータをコピー*/
+
+	addq.l	#1,%d4		/*sz++*/
+	addq.l	#1,%a0		/*i++*/
+	bra	GETSTRING_LOOP 
+		
+GETSTRING_STEP1:
+	move.l %d4,%d0
+
+GETSTRING_END:
 	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
