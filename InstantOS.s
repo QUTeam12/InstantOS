@@ -364,10 +364,26 @@ Queue_fail:
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
+ 
+***************************************************
+**INTERGET(ch,data)　受信データを受信キューに格納する
+**入力：ch->%d1.l data->%d2.b
+***************************************************
 INTERGET:
-	move.b #'1',LED7
-	rts
+	move.w 	%sr,-(%sp)	/*srの値を一時退避*/
+	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
+	cmp.l 	#0,%d1
+	bne	INTERGET_END	/*chが0でないなら何もせずに復帰*/
 	
+    	move.l	#0,%d0          /* キュー0を選択 */
+	move.b	%d2,%d1		
+	jsr	INQ		/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
+
+INTERGET_END:
+	move.w  (%sp)+, %sr	/*スーパースタックから走行レベル回復*/
+	rts
+
+
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
 INTERPUT:
