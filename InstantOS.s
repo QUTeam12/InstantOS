@@ -118,7 +118,8 @@ move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
 ** RESET_TIMER()  TCTL1を設定
 ** 入力、戻り値なし
 *****************
-move.w #0x0004, TCTL1 | restart, 割り込み不可,
+RESET_TIMER:
+	move.w #0x0004, TCTL1 | restart, 割り込み不可,
 | システムクロックの 1/16 を単位として計時，
 | タイマ使用停止
 
@@ -592,4 +593,42 @@ CALL_RP:
 	move.b #'t', LED7
 	** jsr     (%a1) |task_pへジャンプ  /* TODO: step9までお預け */
 	rts
+
+	
+****************************************************************
+**SYSCALL_INTERFACE：システムコール番号に基づき呼び出し
+**入力：システムコール番号->%d0.l　システムコール引数->%d1以降
+****************************************************************
+SYSCALL_INTERFACE:
+	cmp.l #1,%d0
+	beq   CALL_GETSTRING
+
+	cmp.l #2,%d0
+	beq   CALL_PUTSTRING
+
+	cmp.l #3,%d0
+	beq   CALL_RESET_TIMER
+
+	cmp.l #4,%d0
+	beq   CALL_SET_TIMER
+
+CALL_GETSTRING:
+	lea.l GETSTRING,%a0
+	move.l %a0,%d0
+	rte
+
+CALL_PUTSTRING:
+	lea.l PUTSTRING,%a0
+	move.l %a0,%d0
+	rte
+	
+CALL_RESET_TIMER:
+	lea.l RESET_TIMER,%a0
+	move.l %a0,%d0
+	rte
+	
+CALL_SET_TIMER:
+	lea.l SET_TIMER,%a0
+	move.l %a0,%d0
+	rte
 .end
