@@ -134,6 +134,7 @@ bra MAIN
 MAIN:
     **jsr Put
     move.w #0x2000,%SR
+    **jmp	INQ_OUTQ_TEST
     move.l #Mask_UART1,IMR 			| All Mask
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
     move.w #0xE108,USTCNT1			|受信割り込みのみ許可
@@ -189,12 +190,54 @@ PUTSTRING_TEST2:
 	move.l	%a2,%d2
 	move.l 	#16,%d3
 	jsr	PUTSTRING
+	move.l	#1000,%d4
+	jmp	PUTSTRING_TEST_LOOP3
 	jmp	PUTSTRING_TEST2
 	
 PUTSTRING_TEST_LOOP2:
 	jmp	PUTSTRING_TEST_LOOP2
 	
 	**jmp	PUTSTRING_TEST2
+	
+PUTSTRING_TEST_LOOP3:
+	sub.l	#1,%d4
+	beq	PUTSTRING_TEST2
+	jmp	PUTSTRING_TEST_LOOP3
+
+**inq outqてすと
+
+
+INQ_OUTQ_TEST:
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	INQ_INPUT
+	jsr 	OUTQ_INPUT
+	jsr 	OUTQ_INPUT
+	jsr 	OUTQ_INPUT
+	jsr 	OUTQ_INPUT
+	jsr 	OUTQ_INPUT
+	jmp	INQ_OUTQ_TEST
+	
+
+INQ_INPUT:
+	move.l #0,%d0
+	move.b #0x61,%d1
+	jsr INQ
+	rts
+
+OUTQ_INPUT:
+	move.l #0,%d0
+	jsr OUTQ
+	rts
+	
+
 
 INQ:
 	**	番号noのキューにデータをいれる
@@ -222,7 +265,9 @@ INQ0:
 	jmp	INQ0_step2
 
 INQ0_step1:
-	move.l top0,in0
+	lea.l	top0,%a0
+	move.l	%a0,in0
+	
 
 INQ0_step2:
 	add.l	#1,s0 			/*s++*/
@@ -243,7 +288,8 @@ INQ1:
 	jmp	INQ1_step2
 
 INQ1_step1:
-	move.l top1,in1
+	lea.l	top1,%a0
+	move.l	%a0,in1
 
 INQ1_step2:
 	add.l	#1,s1 			/*s++*/
@@ -279,8 +325,9 @@ OUTQ0:
 	jmp	OUTQ0_step2
 
 OUTQ0_step1:
-	move.l top0,out0
-
+	lea.l	top0,%a0
+	move.l	%a0,out0
+	
 OUTQ0_step2:
 	sub.l	#1,s0 			/*s--*/
 	move.l	#1,%d0			/*成功を報告*/
@@ -300,7 +347,8 @@ OUTQ1:
 	jmp	OUTQ1_step2
 
 OUTQ1_step1:
-	move.l top1,out1
+	lea.l	top1,%a0
+	move.l	%a0,in1
 
 OUTQ1_step2:
 	sub.l	#1,s1 			/*s--*/
