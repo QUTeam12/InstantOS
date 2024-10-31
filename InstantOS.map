@@ -12,19 +12,19 @@ Linker script and memory map
 LOAD InstantOS.o
                 [!provide]                        PROVIDE (__stack = 0x3fff0)
 
-.text           0x0000000000000400      0x3f8
+.text           0x0000000000000400      0x46c
  *(.text)
- .text          0x0000000000000400      0x3f8 InstantOS.o
+ .text          0x0000000000000400      0x46c InstantOS.o
 
-.data           0x00000000000007f8       0x20
-                0x00000000000007f8                . = ALIGN (0x4)
+.data           0x000000000000086c       0x20
+                0x000000000000086c                . = ALIGN (0x4)
  *(.data)
- .data          0x00000000000007f8       0x20 InstantOS.o
+ .data          0x000000000000086c       0x20 InstantOS.o
 
-.bss            0x0000000000000818     0x4218
-                0x0000000000000818                . = ALIGN (0x4)
+.bss            0x000000000000088c     0x421c
+                0x000000000000088c                . = ALIGN (0x4)
  *(.bss)
- .bss           0x0000000000000818     0x4218 InstantOS.o
+ .bss           0x000000000000088c     0x421c InstantOS.o
 
 .stab
  *(.stab)
@@ -32,7 +32,7 @@ LOAD InstantOS.o
 .stabstr
  *(.stabstr)
 Address of section .text set to 0x400
-OUTPUT(InstantOS.abs.tmp1487129 srec)
+OUTPUT(InstantOS.abs.tmp3853535 srec)
 
 Cross Reference Table
 
