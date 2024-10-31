@@ -75,7 +75,7 @@ out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s1:		.ds.l	1			/*キューに溜まっているデータの数*/
 
-
+WORK:		.ds.b 256			/* 受信制御部テスト　*/
 .section .data
 **putstring test用のデータ
 
@@ -138,12 +138,36 @@ MAIN:
     move.l #Mask_UART1,IMR 			| All Mask
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
     move.w #0xE108,USTCNT1			|受信割り込みのみ許可
-    jsr	PUTSTRING_TEST
+    **jsr	PUTSTRING_TEST
+    jsr		GETSTRING_TEST
     move.b #'S',LED0
 Loop:
 	**jmp HardwareInterface
 	bra Loop
-
+********受信制御部のテスト
+GETSTRING_TEST:
+	move.b #'T',LED5
+	move.l	#0xfffff,%d4
+GETSTRING_TEST_LOOP:
+	sub.l	#1,%d4
+	beq	GETSTRING_TEST2
+	jmp	GETSTRING_TEST_LOOP
+GETSTRING_TEST2:
+	moveq #0 , %d1
+	lea.l WORK, %a0
+	move.l %a0, %d2
+	move.l #256, %d3
+	move.b #'G',LED7
+	jsr GETSTRING
+	move.l %d0, %d3
+	moveq #0 , %d1
+	lea.l WORK, %a0
+	move.l %a0, %d2
+	move.b #'P',LED6
+	jsr PUTSTRING
+	move.b #'S',LED5
+	jmp GETSTRING_TEST
+	
 ********INTERPUTの動作テスト
 ********キューに文字を格納する
 Put:
@@ -480,7 +504,7 @@ GETSTRING_LOOP:
 	
 	cmp.l	#0,%d0
 	beq	GETSTRING_STEP1 /*OUTQが失敗なら分岐*/
-	move.l %d1,(%a0)	/*i番地にデータをコピー*/
+	move.b %d1,(%a0)	/*i番地にデータをコピー*/
 
 	addq.l	#1,%d4		/*sz++*/
 	addq.l	#1,%a0		/*i++*/
