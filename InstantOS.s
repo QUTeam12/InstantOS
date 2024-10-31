@@ -436,6 +436,47 @@ PUTSTRING_END:
 	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
+
+
+ ******************************************************************************
+** GETSTRING(ch, p, size)
+**chの受信キューからsizeバイトのデータを取り出し、p番地以降にコピーする
+**入力： ch->%d1.l  p->%d2.l  size->%d3.l
+**戻り値：読みだしたデータ数 sz->d0.l
+******************************************************************************
+GETSTRING:
+	movem.l	%a0/%d4,-(%sp)
+	move.w 	%sr,-(%sp)			/*走行レベル退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
+	
+	cmp.l	#0,%d1
+	bne	GETSTRING_END 	/*ch≠0なら何もせず復帰*/
+
+	move.l	#0,%d4		/*sz->%d4*/
+	movea.l %d2,%a0 	/*i->a0*/ 
+	
+GETSTRING_LOOP:
+	cmp.l	%d4,%d3
+	beq	GETSTRING_STEP1 /*sz=sizeなら分岐*/
+
+	move.l	#0,%d0
+	jsr	OUTQ 
+	
+	cmp.l	#0,%d0
+	beq	GETSTRING_STEP1 /*OUTQが失敗なら分岐*/
+	move.l %d1,(%a0)	/*i番地にデータをコピー*/
+
+	addq.l	#1,%d4		/*sz++*/
+	addq.l	#1,%a0		/*i++*/
+	bra	GETSTRING_LOOP 
+		
+GETSTRING_STEP1:
+	move.l %d4,%d0
+
+GETSTRING_END:
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
+	movem.l	(%sp)+,%a0/%d4
+	rts
 	
 
 HardwareInterface: 
