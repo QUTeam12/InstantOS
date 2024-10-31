@@ -57,8 +57,6 @@
 ***************************************************************
 .section .bss
 .even
-task_p: .ds.l	1
-.even
 SYS_STK:.ds.b 0x4000 | システムスタック領域
 .even
 SYS_STK_TOP: | システムスタック領域の最後尾
@@ -103,7 +101,6 @@ lea.l SYS_STK_TOP, %SP 			| Set SSP
 ****************
 move.b #0x40, IVR 				| ユーザ割り込みベクタ番号を0x40+level に設定．
 move.l #HardwareInterface ,0x110| 送受信割込みを設定
-move.l #TimerInterface, 0x118 | タイマ割り込みの設定
 move.l #Mask_None,IMR 			| All Mask
 
 ****************
@@ -115,27 +112,10 @@ move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
 
 ****************
 ** タイマ関係の初期化 (割り込みレベルは 6 に固定されている)
-** RESET_TIMER()  TCTL1を設定
-** 入力、戻り値なし
 *****************
 move.w #0x0004, TCTL1 | restart, 割り込み不可,
-| システムクロックの 1/16 を単位として計時,
+| システムクロックの 1/16 を単位として計時，a
 | タイマ使用停止
-
-******************
-** SET_TIMER(t, p)
-** 入力:割り込み発生周期d1.w
-**      割り込み時に起動するルーチンの先頭アドレスd2.l
-** 戻り値なし
-******************
-/* TODO: レジスタの管理。レジスタ変更予定。*/
-SET_TIMER:
-	** lea.l   task_p, %a0 /* TODO: step9までお預け */
-	** move.l  %d2, (%a0) |task_p=入力d2 /* TODO: step9までお預け */
-	move.w  #0xce, TPRER1 |1カウント0.1msecに設定
-	move.w  #0xc350, %d1 /* タイマ間隔のテスト値。5sec。*/
-	move.w  %d1, TCMP1 |割り込み発生周期を設定
-	move.w  #0x15, TCTL1 |タイマ使用許可
 
 *****************
 **キュー初期化
@@ -151,21 +131,18 @@ move.l  %a0,out1
 move.l	#0,s1
 bra MAIN
 
-*****************
-**ループ
-*****************
 MAIN:
     **jsr Put
-    move.w #0x2000,%SR /* 割り込み許可．(スーパーバイザモードの場合) */
+    move.w #0x2000,%SR
     **jmp	INQ_OUTQ_TEST
-    move.l #Mask_UART1_Timer,IMR 			| All Mask(タイマも許可)
+    move.l #Mask_UART1,IMR 			| All Mask
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
     move.w #0xE108,USTCNT1			|受信割り込みのみ許可
     **jsr	PUTSTRING_TEST
     jsr		GETSTRING_TEST
     move.b #'S',LED0
 Loop:
-	**jmp HardwareInterface /* シミュレータテスト用 */
+	**jmp HardwareInterface
 	bra Loop
 ********受信制御部のテスト
 GETSTRING_TEST:
@@ -567,31 +544,4 @@ INTERPUT_PREPARE:
     	jsr INTERPUT
     	movem.l (%sp)+,%a0-%a7/%d1-%d7
     	rte
-
-TimerInterface:
-	movem.l %a0-%a7/%d1-%d7, -(%sp)
-	move.b #'e', LED4
-	btst.b  #0, TSTAT1+1 |コンペアイベント発生チェック
-	beq     return |発生無しで復帰
-	move.b #'m', LED5
-	move.w  #0x0000, TSTAT1 |ステータスレジスタのクリア
-	jsr     CALL_RP
-	movem.l (%sp)+,%a0-%a7/%d1-%d7 
-	rte
-return:
-	move.b #'f', LED5
-    	movem.l (%sp)+,%a0-%a7/%d1-%d7 
-	rte
-
-******************
-** CALL_RP()
-** 入力、戻り値なし
-******************
-CALL_RP:
-	move.b #'i', LED6
-	** lea.l   task_p, %a0 /* TODO: step9までお預け */
-	** movea.l (%a0), %a1 |a1=task_p /* TODO: step9までお預け */
-	move.b #'t', LED7
-	** jsr     (%a1) |task_pへジャンプ  /* TODO: step9までお預け */
-	rts
 .end
