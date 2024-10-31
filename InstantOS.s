@@ -162,7 +162,7 @@ MAIN:
     move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
     move.w #0xE108,USTCNT1			|受信割り込みのみ許可
     **jsr	PUTSTRING_TEST
-    **jsr		GETSTRING_TEST
+   jsr		GETSTRING_TEST
     move.b #'S',LED0
 Loop:
 	**jmp HardwareInterface			/* シミュレータテスト用 */
