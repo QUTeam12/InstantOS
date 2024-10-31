@@ -1,0 +1,40 @@
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+ram              0x0000000000000000 0x0000000000040000 xrw
+rom0             0x0000000000c00000 0x0000000000080000
+device           0x0000000000fff000 0x0000000000001000
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+LOAD InstantOS.o
+                [!provide]                        PROVIDE (__stack = 0x3fff0)
+
+.text           0x0000000000000400      0x3f8
+ *(.text)
+ .text          0x0000000000000400      0x3f8 InstantOS.o
+
+.data           0x00000000000007f8       0x20
+                0x00000000000007f8                . = ALIGN (0x4)
+ *(.data)
+ .data          0x00000000000007f8       0x20 InstantOS.o
+
+.bss            0x0000000000000818     0x4218
+                0x0000000000000818                . = ALIGN (0x4)
+ *(.bss)
+ .bss           0x0000000000000818     0x4218 InstantOS.o
+
+.stab
+ *(.stab)
+
+.stabstr
+ *(.stabstr)
+Address of section .text set to 0x400
+OUTPUT(InstantOS.abs.tmp1487129 srec)
+
+Cross Reference Table
+
+Symbol                                            File
+No symbols
