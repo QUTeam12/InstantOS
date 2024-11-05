@@ -63,15 +63,14 @@
 *** 初期値のあるデータ領域
 ****************************************************************
 .section .data
-TMSG:
-.ascii "******\r\n" | \r: 行頭へ (キャリッジリターン)
-.even | \n: 次の行へ (ラインフィード)
-TTC:
-.dc.w 0
-**putstring test用のデータ
-
-TDATA1:		.ascii "0123456789ABCDEF"
-TDATA2:		.ascii "klmnopqrstuvwxyz"
+level_prompt: .ascii "Select your level(0-3): "
+type_prompt:  .ascii "Please type: "
+correct_msg:  .ascii "\r\ncollect: "
+error_msg:    .ascii "\r\nwrong: "
+speed_msg:    .ascii "\r\ntyping speed(letter/min): "
+newline:      .ascii "\r\n"
+words:        .ascii "a"
+success: .ascii "success"
 .even
 ***************************************************************
 ** スタック領域の確保
@@ -86,13 +85,13 @@ SYS_STK_TOP: | システムスタック領域の最後尾
 *****************************************************************
 **キュー
 *****************************************************************
-top0:		.ds.b	255			/*キューの戦闘の番地*/
+top0:		.ds.b	255			/*キューの先頭の番地*/
 bottom0:	.ds.b	1			/*キューの末尾の番地*/
 out0:		.ds.l	1			/*次に取り出すデータのある番地*/
 in0:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s0:		.ds.l	1			/*キューに溜まっているデータの数*/
 
-top1:		.ds.b	255			/*キューの戦闘の番地*/
+top1:		.ds.b	255			/*キューの先頭の番地*/
 bottom1:	.ds.b	1			/*キューの末尾の番地*/
 out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
@@ -109,9 +108,9 @@ USR_STK:
 .even
 USR_STK_TOP: | ユーザスタック領域の最後尾
 
-
-WORK:		.ds.b 256			/* 受信制御部テスト　*/
-
+level_input:
+.ds.b 1
+.even
 ***************************************************************
 ** 初期化
 ** 内部デバイスレジスタには特定の値が設定されている．
@@ -120,51 +119,46 @@ WORK:		.ds.b 256			/* 受信制御部テスト　*/
 .section .text
 .even
 boot: * スーパーバイザ & 各種設定を行っている最中の割込禁止
-move.w #0x2700,%SR
-lea.l SYS_STK_TOP, %SP 			| Set SSP
+	move.w #0x2700,%SR
+	lea.l SYS_STK_TOP, %SP 			| Set SSP
 
 ****************
 ** 割り込みコントローラの初期化
 ****************
-move.b #0x40, IVR 				| ユーザ割り込みベクタ番号を0x40+level に設定．
-move.l #SYSCALL_INTERFACE, 0x080 | システムコールを設定
-move.l #HardwareInterface ,0x110| 送受信割込みを設定
-move.l #TimerInterface, 0x118 | タイマ割り込みの設定
-move.l #Mask_None,IMR 			| All Mask
+	move.b #0x40, IVR | ユーザ割り込みベクタ番号を0x40+level に設定．
+	move.l #SYSCALL_INTERFACE, 0x080 | システムコールを設定
+	move.l #HardwareInterface ,0x110| 送受信割込みを設定
+	move.l #TimerInterface, 0x118 | タイマ割り込みの設定
+	move.l #Mask_None,IMR 			| All Mask
 
 ****************
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
-move.w #U_Reset, USTCNT1 		| リセット
-move.w #U_Putpull, USTCNT1 	|受信割り込みのみ許可
-move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
+	move.w #U_Reset, USTCNT1 		| リセット
+	move.w #U_Putpull, USTCNT1 	|受信割り込みのみ許可
+	move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
 
 *****************
 **キュー初期化
 *****************
-
-lea.l	top0,%a0
-move.l	%a0,in0
-move.l  %a0,out0
-move.l	#0,s0
-lea.l	top1,%a0
-move.l	%a0,in1
-move.l  %a0,out1
-move.l	#0,s1
-bra MAIN
+	lea.l	top0,%a0
+	move.l	%a0,in0
+	move.l  %a0,out0
+	move.l	#0,s0
+	lea.l	top1,%a0
+	move.l	%a0,in1
+	move.l  %a0,out1
+	move.l	#0,s1
+	bra MAIN
 
 ****************
 **ループ
 *****************
 MAIN:
 **メイン以降をデバッグ
-    **jsr Put
     move.w #0x2000,%SR				/* 割り込み許可．(スーパーバイザモードの場合) */
     move.l #Mask_UART1_Timer,IMR 			| All UnMask
     move.w #U_Put_Interupt, USTCNT1 	|受信割り込みのみ許可
-    **jmp	INQ_OUTQ_TEST
-    **jsr	PUTSTRING_TEST
-    **jsr	GETSTRING_TEST
     move.w #0x0000, %SR | USER MODE, LEVEL 0
     lea.l USR_STK_TOP,%SP | user stack の設定
 ** システムコールによる RESET_TIMER の起動
@@ -175,12 +169,20 @@ MAIN:
     move.w #50000, %D1
     move.l #TT, %D2
     trap #0
+	
+** テスト用文字列の出力
+	move.l #SYSCALL_NUM_PUTSTRING, %d0
+	move.l #0, %d1
+	move.l #words, %d2
+	move.l #1, %d3
+	trap #0
+	jsr NEWLINE
+
 ******************************
 * sys_GETSTRING, sys_PUTSTRING のテスト
 * ターミナルの入力をエコーバックする
 ******************************
 LOOP:
-    **jmp HardwareInterface			/* シミュレータテスト用 */
     move.l #SYSCALL_NUM_GETSTRING, %D0
     move.l #0, %D1 | ch = 0
     move.l #BUF, %D2 | p = #BUF
@@ -191,151 +193,38 @@ LOOP:
     move.l #0, %D1 | ch = 0
     move.l #BUF,%D2 | p = #BUF
     trap #0
+	lea.l BUF, %a0
+	lea.l words, %a1
+	cmp.l %a0, %a1
+	beq SUCCESS
     bra LOOP
+
+NEWLINE:
+	move.l #SYSCALL_NUM_PUTSTRING, %d0
+	move.l #0, %d1
+	move.l #newline, %d2
+	move.l #2, %d3
+	trap #0
+	rts
+
+SUCCESS:
+	move.l #SYSCALL_NUM_PUTSTRING, %d0
+	move.l #0, %d1
+	move.l #success, %d2
+	move.l #7, %d3
+	trap #0
+	bra LOOP
+
 ******************************
 * タイマのテスト
-* ’******’ を表示し改行する．
-* ５回実行すると，RESET_TIMER をする．
 ******************************
 TT:
     movem.l %D0-%D7/%A0-%A6,-(%SP)
-    cmpi.w #5,TTC | TTC カウンタで 5 回実行したかどうか数える
-    beq TTKILL | 5 回実行したら，タイマを止める
-    move.l #SYSCALL_NUM_PUTSTRING,%D0
-    move.l #0, %D1 | ch = 0
-    move.l #TMSG, %D2 | p = #TMSG
-    move.l #8, %D3 | size = 8
-    trap #0
-    addi.w #1,TTC | TTC カウンタを 1 つ増やして
     bra TTEND | そのまま戻る
-TTKILL:
-    move.l #SYSCALL_NUM_RESET_TIMER,%D0
-    trap #0
 TTEND:
     movem.l (%SP)+,%D0-%D7/%A0-%A6
     rts
-*********************************************************
-**TEST
-********************************************************
-********受信制御部のテスト
-GETSTRING_TEST:
-	move.b #'T',LED5
-	move.l	#0xfffff,%d4
-GETSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	GETSTRING_TEST2
-	jmp	GETSTRING_TEST_LOOP
-GETSTRING_TEST2:
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.l #256, %d3
-	move.b #'G',LED7
-	jsr GETSTRING
-	move.l %d0, %d3
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.b #'P',LED6
-	jsr PUTSTRING
-	move.b #'S',LED5
-	jmp GETSTRING_TEST
-	
-********INTERPUTの動作テスト
-********キューに文字を格納する
-Put:
-    movem.l %d0-%d2, -(%sp)
-    move.b #0x61, %d1  |d0='a'
-    move.b #16, %d2
-PutLoop:
-    move.l #1,%d0
-    jsr INQ
-    cmpi.l #0,%d0
-    beq EndPut
-    subq.b #1 , %d2
-    beq EndPutLoop
-    bra PutLoop
-EndPutLoop:
-    addi.b #1,%d1
-    move.b #16,%d2
-    bra PutLoop
 
-EndPut:
-    move.l #256, s1
-    movem.l (%sp)+,%d0-%d2 
-	rts
-
-********PUTSTRINGの動作テスト
-********キューに文字を格納する
-
-PUTSTRING_TEST:
-	move.l	#0,%d1
-	lea.l 	TDATA1,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	
-PUTSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP
-	
-PUTSTRING_TEST2:
-	move.l	#0,%d1
-	lea.l 	TDATA2,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	jmp	PUTSTRING_TEST_LOOP3
-	jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP2:
-	jmp	PUTSTRING_TEST_LOOP2
-	
-	**jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP3:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP3
-
-**inq outqてすと
-
-
-INQ_OUTQ_TEST:
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jmp	INQ_OUTQ_TEST
-	
-
-INQ_INPUT:
-	move.l #0,%d0
-	move.b #0x61,%d1
-	jsr INQ
-	rts
-
-OUTQ_INPUT:
-	move.l #0,%d0
-	jsr OUTQ
-	rts
-	
 ******************************************************
 ****Queue
 ******************************************************
@@ -609,7 +498,6 @@ RESET_TIMER:
 **      割り込み時に起動するルーチンの先頭アドレスd2.l
 ** 戻り値なし
 ******************
-/* TODO: レジスタの管理。レジスタ変更予定。*/
 SET_TIMER:
 	movem.l	%a0/%d1,-(%sp)
 	lea.l   task_p, %a0 /* TODO: step9までお預け */
@@ -661,9 +549,9 @@ return:
 ** 入力、戻り値なし
 ******************
 CALL_RP:
-	lea.l   task_p, %a0 /* TODO: step9までお預け */
-	movea.l (%a0), %a1 |a1=task_p /* TODO: step9までお預け */
-	jsr     (%a1) |task_pへジャンプ  /* TODO: step9までお預け */
+	lea.l   task_p, %a0
+	movea.l (%a0), %a1 |a1=task_p
+	jsr     (%a1) |task_pへジャンプ
 	rts
 
 	
