@@ -2,6 +2,13 @@
 ** 各種レジスタ定義
 ***************************************************************
 ***************
+** システムコール番号
+***************
+.equ SYSCALL_NUM_GETSTRING, 1
+.equ SYSCALL_NUM_PUTSTRING, 2
+.equ SYSCALL_NUM_RESET_TIMER, 3
+.equ SYSCALL_NUM_SET_TIMER, 4
+***************
 ** レジスタ群の先頭
 ***************
 .equ REGBASE, 0xFFF000 | DMAP を使用．
@@ -52,6 +59,20 @@
 .equ U_Putpull,		  		0xE100
 .equ U_Put_Interupt,  		0xE108
 .equ U_PutPull_Interupt,	0xE10C
+****************************************************************
+*** 初期値のあるデータ領域
+****************************************************************
+.section .data
+TMSG:
+.ascii "******\r\n" | \r: 行頭へ (キャリッジリターン)
+.even | \n: 次の行へ (ラインフィード)
+TTC:
+.dc.w 0
+**putstring test用のデータ
+
+TDATA1:		.ascii "0123456789ABCDEF"
+TDATA2:		.ascii "klmnopqrstuvwxyz"
+.even
 ***************************************************************
 ** スタック領域の確保
 ***************************************************************
@@ -77,15 +98,19 @@ out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s1:		.ds.l	1			/*キューに溜まっているデータの数*/
 
+****************************************************************
+*** 初期値の無いデータ領域
+****************************************************************
+BUF:
+.ds.b 256 | BUF[256]
+.even
+USR_STK:
+.ds.b 0x4000 | ユーザスタック領域
+.even
+USR_STK_TOP: | ユーザスタック領域の最後尾
+
+
 WORK:		.ds.b 256			/* 受信制御部テスト　*/
-.section .data
-**putstring test用のデータ
-
-TDATA1:		.ascii "0123456789ABCDEF"
-TDATA2:		.ascii "klmnopqrstuvwxyz"
-
-
-
 
 ***************************************************************
 ** 初期化
@@ -111,33 +136,8 @@ move.l #Mask_None,IMR 			| All Mask
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
 move.w #U_Reset, USTCNT1 		| リセット
-move.w #U_Putpull, USTCNT1 	    |受信送信可能
+move.w #U_Putpull, USTCNT1 	|受信割り込みのみ許可
 move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
-
-****************
-** タイマ関係の初期化 (割り込みレベルは 6 に固定されている)
-** RESET_TIMER()  TCTL1を設定
-** 入力、戻り値なし
-*****************
-RESET_TIMER:
-	move.w #0x0004, TCTL1 | restart, 割り込み不可,
-| システムクロックの 1/16 を単位として計時，
-| タイマ使用停止
-
-******************
-** SET_TIMER(t, p)
-** 入力:割り込み発生周期d1.w
-**      割り込み時に起動するルーチンの先頭アドレスd2.l
-** 戻り値なし
-******************
-/* TODO: レジスタの管理。レジスタ変更予定。*/
-SET_TIMER:
-	** lea.l   task_p, %a0 /* TODO: step9までお預け */
-	** move.l  %d2, (%a0) |task_p=入力d2 /* TODO: step9までお預け */
-	move.w  #0xce, TPRER1 |1カウント0.1msecに設定
-	move.w  #0xc350, %d1 /* タイマ間隔のテスト値。5sec。*/
-	move.w  %d1, TCMP1 |割り込み発生周期を設定
-	move.w  #0x15, TCTL1 |タイマ使用許可
 
 *****************
 **キュー初期化
@@ -157,18 +157,66 @@ bra MAIN
 **ループ
 *****************
 MAIN:
+**メイン以降をデバッグ
     **jsr Put
     move.w #0x2000,%SR				/* 割り込み許可．(スーパーバイザモードの場合) */
-    **jmp	INQ_OUTQ_TEST
     move.l #Mask_UART1_Timer,IMR 			| All UnMask
-    move.w #U_PutPull_Interupt, USTCNT1 	    |受信送信割り込み許可
-    move.w #0xE110,USTCNT1			|受信割り込みのみ許可
+    move.w #U_Put_Interupt, USTCNT1 	|受信割り込みのみ許可
+    **jmp	INQ_OUTQ_TEST
     **jsr	PUTSTRING_TEST
     **jsr	GETSTRING_TEST
-    move.b #'S',LED0
-Loop:
-	**jmp HardwareInterface			/* シミュレータテスト用 */
-	bra Loop
+    move.w #0x0000, %SR | USER MODE, LEVEL 0
+    lea.l USR_STK_TOP,%SP | user stack の設定
+** システムコールによる RESET_TIMER の起動
+    move.l #SYSCALL_NUM_RESET_TIMER,%D0
+    trap #0
+** システムコールによる SET_TIMER の起動
+    move.l #SYSCALL_NUM_SET_TIMER, %D0
+    move.w #50000, %D1
+    move.l #TT, %D2
+    trap #0
+******************************
+* sys_GETSTRING, sys_PUTSTRING のテスト
+* ターミナルの入力をエコーバックする
+******************************
+LOOP:
+    **jmp HardwareInterface			/* シミュレータテスト用 */
+    move.l #SYSCALL_NUM_GETSTRING, %D0
+    move.l #0, %D1 | ch = 0
+    move.l #BUF, %D2 | p = #BUF
+    move.l #256, %D3 | size = 256
+    trap #0
+    move.l %D0, %D3 | size = %D0 (length of given string)
+    move.l #SYSCALL_NUM_PUTSTRING, %D0
+    move.l #0, %D1 | ch = 0
+    move.l #BUF,%D2 | p = #BUF
+    trap #0
+    bra LOOP
+******************************
+* タイマのテスト
+* ’******’ を表示し改行する．
+* ５回実行すると，RESET_TIMER をする．
+******************************
+TT:
+    movem.l %D0-%D7/%A0-%A6,-(%SP)
+    cmpi.w #5,TTC | TTC カウンタで 5 回実行したかどうか数える
+    beq TTKILL | 5 回実行したら，タイマを止める
+    move.l #SYSCALL_NUM_PUTSTRING,%D0
+    move.l #0, %D1 | ch = 0
+    move.l #TMSG, %D2 | p = #TMSG
+    move.l #8, %D3 | size = 8
+    trap #0
+    addi.w #1,TTC | TTC カウンタを 1 つ増やして
+    bra TTEND | そのまま戻る
+TTKILL:
+    move.l #SYSCALL_NUM_RESET_TIMER,%D0
+    trap #0
+TTEND:
+    movem.l (%SP)+,%D0-%D7/%A0-%A6
+    rts
+*********************************************************
+**TEST
+********************************************************
 ********受信制御部のテスト
 GETSTRING_TEST:
 	move.b #'T',LED5
@@ -288,7 +336,9 @@ OUTQ_INPUT:
 	jsr OUTQ
 	rts
 	
-
+******************************************************
+****Queue
+******************************************************
 
 INQ:
 	**	番号noのキューにデータをいれる
@@ -399,7 +449,7 @@ OUTQ1:
 
 OUTQ1_step1:
 	lea.l	top1,%a0
-	move.l	%a0,in1
+	move.l	%a0,out1
 
 OUTQ1_step2:
 	sub.l	#1,s1 			/*s--*/
@@ -438,7 +488,6 @@ INTERGET_END:
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
 INTERPUT:
-	move.b #'I',LED2
 	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
@@ -451,7 +500,6 @@ INTERPUT:
 	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
 	jmp 	INTERPUT_END
 INTERPUT_fail:
-	move.b #'F',LED3
 	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	rts
@@ -544,10 +592,36 @@ GETSTRING_END:
 	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
-	
+****************
+** タイマ関係の初期化 (割り込みレベルは 6 に固定されている)
+** RESET_TIMER()  TCTL1を設定
+** 入力、戻り値なし
+*****************
+RESET_TIMER:
+	move.w #0x0004, TCTL1 | restart, 割り込み不可
+	rts
+| システムクロックの 1/16 を単位として計時，
+| タイマ使用停止
+
+******************
+** SET_TIMER(t, p)
+** 入力:割り込み発生周期d1.w
+**      割り込み時に起動するルーチンの先頭アドレスd2.l
+** 戻り値なし
+******************
+/* TODO: レジスタの管理。レジスタ変更予定。*/
+SET_TIMER:
+	movem.l	%a0/%d1,-(%sp)
+	lea.l   task_p, %a0 /* TODO: step9までお預け */
+	move.l  %d2, (%a0) |task_p=入力d2 /* TODO: step9までお預け */
+	move.w  #0xce, TPRER1 |1カウント0.1msecに設定
+	move.w  #0xc350, %d1 /* タイマ間隔のテスト値。5sec。*/
+	move.w  %d1, TCMP1 |割り込み発生周期を設定
+	move.w  #0x15, TCTL1 |タイマ使用許可
+	movem.l	(%sp)+,%a0/%d1
+	rts	
 
 HardwareInterface: 
-	move.b #'H',LED1
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	move.w URX1,%d3
 	move.b %d3,%d2 /* data = %d2.b */
@@ -573,16 +647,13 @@ INTERPUT_PREPARE:
     	rte
 TimerInterface:
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
-	move.b #'e', LED4
 	btst.b  #0, TSTAT1+1 |コンペアイベント発生チェック
 	beq     return |発生無しで復帰
-	move.b #'m', LED5
 	move.w  #0x0000, TSTAT1 |ステータスレジスタのクリア
 	jsr     CALL_RP
 	movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
 return:
-	move.b #'f', LED5
     	movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
 ******************
@@ -590,11 +661,9 @@ return:
 ** 入力、戻り値なし
 ******************
 CALL_RP:
-	move.b #'i', LED6
-	** lea.l   task_p, %a0 /* TODO: step9までお預け */
-	** movea.l (%a0), %a1 |a1=task_p /* TODO: step9までお預け */
-	move.b #'t', LED7
-	** jsr     (%a1) |task_pへジャンプ  /* TODO: step9までお預け */
+	lea.l   task_p, %a0 /* TODO: step9までお預け */
+	movea.l (%a0), %a1 |a1=task_p /* TODO: step9までお預け */
+	jsr     (%a1) |task_pへジャンプ  /* TODO: step9までお預け */
 	rts
 
 	
@@ -603,7 +672,6 @@ CALL_RP:
 **入力：システムコール番号->%d0.l　システムコール引数->%d1以降
 ****************************************************************
 SYSCALL_INTERFACE:
-	move.b #'S', LED0
 	cmp.l #1,%d0
 	beq   CALL_GETSTRING
 
