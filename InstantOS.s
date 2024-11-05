@@ -358,11 +358,12 @@ INTERPUT:
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
     	move.l #1 , %d0          /* キュー1を選択 */
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
+	cmp #0xd,%d1
+	beq	Enter
 **ここでポーランド記法************************************************************
 	move.l STK_P, %a2
 	move.b	%d1,(%a2)
 	add.l	#1, STK_P
-	
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
 	add.w	#0x0800,%d1
@@ -372,6 +373,9 @@ INTERPUT_fail:
 	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	rts
+Enter:
+*******エンターキーが押されたときの処理
+	move.b #'E',LED0
 INTERPUT_END:
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	rts
