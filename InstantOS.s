@@ -68,10 +68,6 @@ TMSG:
 .even | \n: 次の行へ (ラインフィード)
 TTC:
 .dc.w 0
-**putstring test用のデータ
-
-TDATA1:		.ascii "0123456789ABCDEF"
-TDATA2:		.ascii "klmnopqrstuvwxyz"
 .even
 ***************************************************************
 ** スタック領域の確保
@@ -97,7 +93,11 @@ bottom1:	.ds.b	1			/*キューの末尾の番地*/
 out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s1:		.ds.l	1			/*キューに溜まっているデータの数*/
-
+***************************************************************
+**計算要スタック領域
+***************************************************************
+STK:		.ds.b	256
+STK_P:		.ds.l	1
 ****************************************************************
 *** 初期値の無いデータ領域
 ****************************************************************
@@ -151,8 +151,24 @@ lea.l	top1,%a0
 move.l	%a0,in1
 move.l  %a0,out1
 move.l	#0,s1
-bra MAIN
 
+********************
+**計算用スタック初期化
+********************
+lea.l	STK, %a0
+move.l %a0,STK_P
+**jsr TEST_STK
+bra MAIN
+TEST_STK:
+	move.b #1,%d1
+STK_LOOP:
+**ここでポーランド記法************************************************************
+	move.l STK_P, %a2
+	move.b	%d1,(%a2)
+	addq #1,%d1
+	add.l	#1, STK_P
+	bra STK_LOOP
+	
 ****************
 **ループ
 *****************
@@ -167,14 +183,6 @@ MAIN:
     **jsr	GETSTRING_TEST
     move.w #0x0000, %SR | USER MODE, LEVEL 0
     lea.l USR_STK_TOP,%SP | user stack の設定
-** システムコールによる RESET_TIMER の起動
-    move.l #SYSCALL_NUM_RESET_TIMER,%D0
-    trap #0
-** システムコールによる SET_TIMER の起動
-    move.l #SYSCALL_NUM_SET_TIMER, %D0
-    move.w #50000, %D1
-    move.l #TT, %D2
-    trap #0
 ******************************
 * sys_GETSTRING, sys_PUTSTRING のテスト
 * ターミナルの入力をエコーバックする
@@ -192,150 +200,6 @@ LOOP:
     move.l #BUF,%D2 | p = #BUF
     trap #0
     bra LOOP
-******************************
-* タイマのテスト
-* ’******’ を表示し改行する．
-* ５回実行すると，RESET_TIMER をする．
-******************************
-TT:
-    movem.l %D0-%D7/%A0-%A6,-(%SP)
-    cmpi.w #5,TTC | TTC カウンタで 5 回実行したかどうか数える
-    beq TTKILL | 5 回実行したら，タイマを止める
-    move.l #SYSCALL_NUM_PUTSTRING,%D0
-    move.l #0, %D1 | ch = 0
-    move.l #TMSG, %D2 | p = #TMSG
-    move.l #8, %D3 | size = 8
-    trap #0
-    addi.w #1,TTC | TTC カウンタを 1 つ増やして
-    bra TTEND | そのまま戻る
-TTKILL:
-    move.l #SYSCALL_NUM_RESET_TIMER,%D0
-    trap #0
-TTEND:
-    movem.l (%SP)+,%D0-%D7/%A0-%A6
-    rts
-*********************************************************
-**TEST
-********************************************************
-********受信制御部のテスト
-GETSTRING_TEST:
-	move.b #'T',LED5
-	move.l	#0xfffff,%d4
-GETSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	GETSTRING_TEST2
-	jmp	GETSTRING_TEST_LOOP
-GETSTRING_TEST2:
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.l #256, %d3
-	move.b #'G',LED7
-	jsr GETSTRING
-	move.l %d0, %d3
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.b #'P',LED6
-	jsr PUTSTRING
-	move.b #'S',LED5
-	jmp GETSTRING_TEST
-	
-********INTERPUTの動作テスト
-********キューに文字を格納する
-Put:
-    movem.l %d0-%d2, -(%sp)
-    move.b #0x61, %d1  |d0='a'
-    move.b #16, %d2
-PutLoop:
-    move.l #1,%d0
-    jsr INQ
-    cmpi.l #0,%d0
-    beq EndPut
-    subq.b #1 , %d2
-    beq EndPutLoop
-    bra PutLoop
-EndPutLoop:
-    addi.b #1,%d1
-    move.b #16,%d2
-    bra PutLoop
-
-EndPut:
-    move.l #256, s1
-    movem.l (%sp)+,%d0-%d2 
-	rts
-
-********PUTSTRINGの動作テスト
-********キューに文字を格納する
-
-PUTSTRING_TEST:
-	move.l	#0,%d1
-	lea.l 	TDATA1,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	
-PUTSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP
-	
-PUTSTRING_TEST2:
-	move.l	#0,%d1
-	lea.l 	TDATA2,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	jmp	PUTSTRING_TEST_LOOP3
-	jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP2:
-	jmp	PUTSTRING_TEST_LOOP2
-	
-	**jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP3:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP3
-
-**inq outqてすと
-
-
-INQ_OUTQ_TEST:
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jmp	INQ_OUTQ_TEST
-	
-
-INQ_INPUT:
-	move.l #0,%d0
-	move.b #0x61,%d1
-	jsr INQ
-	rts
-
-OUTQ_INPUT:
-	move.l #0,%d0
-	jsr OUTQ
-	rts
-	
 ******************************************************
 ****Queue
 ******************************************************
@@ -494,6 +358,11 @@ INTERPUT:
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
     	move.l #1 , %d0          /* キュー1を選択 */
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
+**ここでポーランド記法************************************************************
+	move.l STK_P, %a2
+	move.b	%d1,(%a2)
+	add.l	#1, STK_P
+	
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
 	add.w	#0x0800,%d1
