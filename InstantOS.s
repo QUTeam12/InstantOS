@@ -449,7 +449,7 @@ OUTQ1:
 
 OUTQ1_step1:
 	lea.l	top1,%a0
-	move.l	%a0,in1
+	move.l	%a0,out1
 
 OUTQ1_step2:
 	sub.l	#1,s1 			/*s--*/
