@@ -64,7 +64,7 @@
 ****************************************************************
 .section .data
 TMSG:
-.ascii "******\r\n" | \r: 行頭へ (キャリッジリターン)
+.ascii "\n" | \r: 行頭へ (キャリッジリターン)
 .even | \n: 次の行へ (ラインフィード)
 TTC:
 .dc.w 0
@@ -93,11 +93,26 @@ bottom1:	.ds.b	1			/*キューの末尾の番地*/
 out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s1:		.ds.l	1			/*キューに溜まっているデータの数*/
+
+top2:		.ds.b	255			/*キューの戦闘の番地*/
+bottom2:	.ds.b	1			/*キューの末尾の番地*/
+out2:		.ds.l	1			/*次に取り出すデータのある番地*/
+in2:		.ds.l	1 			/*次にデータを入れるべき番地*/
+s2:		.ds.l	1			/*キューに溜まっているデータの数*/
 ***************************************************************
 **計算要スタック領域
 ***************************************************************
-STK:		.ds.b	256
-STK_P:		.ds.l	1
+STK:		.ds.w	256			/* スタック領域 */
+STK_P:		.ds.l	1			/* スタックポインター */
+STK_S:		.ds.l	1			/* スタックの要素数 */
+***************************************************************
+** 計算結果
+***************************************************************
+NUM:		.ds.l	1
+***************************************************************
+**からループ用
+***************************************************************
+Yusei:		.ds.l	1
 ****************************************************************
 *** 初期値の無いデータ領域
 ****************************************************************
@@ -151,24 +166,45 @@ lea.l	top1,%a0
 move.l	%a0,in1
 move.l  %a0,out1
 move.l	#0,s1
-
+lea.l	top2,%a0
+move.l	%a0,in2
+move.l  %a0,out2
+move.l	#0,s2
 ********************
 **計算用スタック初期化
 ********************
 lea.l	STK, %a0
 move.l %a0,STK_P
-**jsr TEST_STK
+move.l	#0,STK_S
+**jsr	TEST
+*********************
+**からループ変数初期化
+*********************
+move.l	#0x5ff, Yusei
 bra MAIN
-TEST_STK:
-	move.b #1,%d1
-STK_LOOP:
-**ここでポーランド記法************************************************************
-	move.l STK_P, %a2
-	move.b	%d1,(%a2)
-	addq #1,%d1
-	add.l	#1, STK_P
-	bra STK_LOOP
+TEST:
+	move.b	#'1',%d1
+	move.l #2 , %d0          /* キュー2を選択 */
+	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
+	move.b	#'1',%d1
+	move.l #2 , %d0          /* キュー2を選択 */
+	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
+	move.b	#'+',%d1
+	move.l #2 , %d0          /* キュー2を選択 */
+	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
+	move.b	#'1',%d1
+	move.l #2 , %d0          /* キュー2を選択 */
+	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
+	move.b	#'+',%d1
+	move.l #2 , %d0          /* キュー2を選択 */
+	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
 	
+	move.b	#0xd,%d1
+	move.l #1 , %d0          /* キュー1を選択 */
+	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
+	move.l	#0,%d1
+	jsr	INTERPUT
+	stop	#0x2700
 ****************
 **ループ
 *****************
@@ -188,18 +224,21 @@ MAIN:
 * ターミナルの入力をエコーバックする
 ******************************
 LOOP:
-    **jmp HardwareInterface			/* シミュレータテスト用 */
-    move.l #SYSCALL_NUM_GETSTRING, %D0
-    move.l #0, %D1 | ch = 0
-    move.l #BUF, %D2 | p = #BUF
-    move.l #256, %D3 | size = 256
-    trap #0
-    move.l %D0, %D3 | size = %D0 (length of given string)
-    move.l #SYSCALL_NUM_PUTSTRING, %D0
-    move.l #0, %D1 | ch = 0
-    move.l #BUF,%D2 | p = #BUF
-    trap #0
-    bra LOOP
+sub.l	#1,Yusei
+cmp.l	#0,Yusei
+bne	LOOP
+move.l #SYSCALL_NUM_GETSTRING, %D0
+move.l #0, %D1 | ch = 0
+move.l #BUF, %D2 | p = #BUF
+move.l #256, %D3 | size = 256
+trap #0
+move.l %D0, %D3 | size = %D0 (length of given string)
+move.l #SYSCALL_NUM_PUTSTRING, %D0
+move.l #0, %D1 | ch = 0
+move.l #BUF,%D2 | p = #BUF
+trap #0
+move.l	#0x5ff, Yusei
+bra LOOP
 ******************************************************
 ****Queue
 ******************************************************
@@ -215,6 +254,8 @@ INQ:
 	beq	INQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
 	beq	INQ1
+	cmp.l 	#2,%d0			/*キュー番号が2*/
+	beq	INQ2
 	jmp	Queue_fail		/*キュー番号が存在しない*/
 
 	
@@ -262,6 +303,27 @@ INQ1_step2:
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
+INQ2:
+	cmp.l	#256,s2
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	in2,%a0			
+	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	lea.l	bottom2,%a1
+	cmp.l	%a1,%a0
+	beq	INQ2_step1		/*in==bottomのときin=top*/
+	add.l	#1,in2			/*in++*/
+	jmp	INQ2_step2
+
+INQ2_step1:
+	lea.l	top2,%a0
+	move.l	%a0,in2
+
+INQ2_step2:
+	add.l	#1,s2 			/*s++*/
+	move.l	#1,%d0			/*成功を報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
+	rts
 
 
 OUTQ:
@@ -275,6 +337,8 @@ OUTQ:
 	beq	OUTQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
 	beq	OUTQ1
+	cmp.l 	#2,%d0			/*キュー番号が2*/
+	beq	OUTQ2
 	jmp	Queue_fail		/*キュー番号が存在しない*/
 	
 
@@ -322,14 +386,73 @@ OUTQ1_step2:
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
+OUTQ2:	
+	cmp.l	#0,s2
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	out2,%a0			
+	move.b	(%a0),%d1		/*データをキューから取り出し*/
+	lea.l	bottom2,%a1
+	cmp.l	%a1,%a0
+	beq	OUTQ2_step1		/*out==bottomのときout=top*/
+	add.l	#1,out2			/*out++*/
+	jmp	OUTQ2_step2
+
+OUTQ2_step1:
+	lea.l	top2,%a0
+	move.l	%a0,out2
 	
+OUTQ2_step2:
+	sub.l	#1,s2 			/*s--*/
+	move.l	#1,%d0			/*成功を報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
+	rts	
+
 Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
- 
+**************************************************
+** スタック管理
+**************************************************
+**in-> %d1 (w)	out->%d0(成功:1,失敗:0)***********
+INS:
+	movem.l	%a1,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
+	cmp.l	#256, STK_S	/* スタックがいっぱい */
+	beq	STK_fail
+	move.l STK_P, %a1
+	move.w	%d1,(%a1)
+	add.l	#2, STK_P		/* スタックにデータ転送 */
+	add.l	#1, STK_S		/* スタックのカウンタ増加 */
+	move.l	#1,%d0			/*成功を報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a1	/*切り替え前のスタックからレジスタ回復*/
+	rts
+**out->%d1 (w),%d0(成功:1,失敗:0)***********
+OUTS:
+	movem.l	%a1,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
+	cmp.l	#0, STK_S	/* スタックが空 */
+	beq	STK_fail
+	subi.l	#2, STK_P		
+	subi.l	#1, STK_S		/* スタックのカウンタ増加 */
+	move.l STK_P, %a1
+	move.w	(%a1),%d1		/* d1にデータ転送 */
+	move.l	#1,%d0			/*成功を報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a1	/*切り替え前のスタックからレジスタ回復*/
+	rts
+STK_fail:
+	move.l #0,%d0			/*失敗の報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a1	/*切り替え前のスタックからレジスタ回復*/
+	rts
+
 ***************************************************
 **INTERGET(ch,data)　受信データを受信キューに格納する
 **入力：ch->%d1.l data->%d2.b
@@ -358,28 +481,105 @@ INTERPUT:
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
     	move.l #1 , %d0          /* キュー1を選択 */
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
-	cmp #0xd,%d1
-	beq	Enter
-**ここでポーランド記法************************************************************
-	move.l STK_P, %a2
-	move.b	%d1,(%a2)
-	add.l	#1, STK_P
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
 	add.w	#0x0800,%d1
 	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
+	sub.w	#0x0800,%d1
+	cmp #0x0d,%d1
+	beq	Enter			/* Enterキーが入力された */
+	cmp #'\r',%d1
+	beq	INTERPUT_END
+	move.l #2, %d0			/* キュー2を選択 */
+	jsr	INQ
 	jmp 	INTERPUT_END
+
 INTERPUT_fail:
 	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	rts
-Enter:
 *******エンターキーが押されたときの処理
-	move.b #'E',LED0
+Enter:
+	cmp.l #0, s2
+	beq Enter_End
+	move.l #2,%d0			/* キュー2を選択 */
+	jsr	OUTQ
+Enter_Step1:	/* スタックを用いて計算 */
+	cmp.b	#'+',%d1
+	beq	calc_add
+	cmp.b	#'-',%d1
+	beq	calc_sub
+	cmp.b	#'*',%d1
+	beq	calc_mul
+	cmp.b	#'/',%d1
+	beq	calc_div
+	sub.w	#0x30,%d1
+	jsr	INS			/* スタックに転送 */
+	bra Enter
+	
+calc_add:
+	jsr	OUTS
+	cmp.l #0,%d0
+	beq	Error
+	move.b	%d1,%d2
+	jsr	OUTS
+	add.w	%d2, %d1
+	jsr	INS
+	bra	Enter
+calc_sub:
+	jsr	OUTS
+	cmp.l #0,%d0
+	beq	Error
+	move.b	%d1,%d2
+	jsr	OUTS
+	sub.w	%d2, %d1
+	jsr	INS
+	bra	Enter
+calc_mul:
+	jsr	OUTS
+	move.b	%d1,%d2
+	cmp.l #0,%d0
+	beq	Error
+	jsr	OUTS
+	muls.w	%d2, %d1
+	jsr	INS
+	bra	Enter
+calc_div:/* うまく動いていない
+	jsr	OUTS
+	move.b	%d1,%d2
+	cmp.l #0,%d0
+	beq	Error
+	jsr	OUTS
+	divs.w	%d2, %d1
+	jsr	INS
+	bra	Enter	
+Enter_End:
+	jsr	OUTS
+	add.b	#0x30,%d1
+	move.b	%d1,NUM
+	move.b	NUM,LED0
+	move.l #SYSCALL_NUM_PUTSTRING,%D0
+	move.l #0, %D1 | ch = 0
+	move.l #TMSG, %D2 | p = #TMSG
+	move.l #1, %D3 | size = 2
+	trap #0
+** 桁数を考えてモニターに表示
+
+	jmp INTERPUT_END
+Error:
+	move.b	#'E',LED4
+	move.b	#'r',LED3
+	move.b	#'r',LED2
+	move.b	#'o',LED1
+	move.b	#'r',LED0
+	move.l	#0,STK_S
 INTERPUT_END:
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	rts
 
+Overflow:
+	move.b #'S',LED0
+	stop #0x2700
 ******************************************************************************
 ** PUTSTRING(ch, p, size)
 **chの送信キューにp番地から始まるsizeバイトのデータを格納し、送信割り込みを開始　
@@ -488,7 +688,6 @@ SET_TIMER:
 	lea.l   task_p, %a0 /* TODO: step9までお預け */
 	move.l  %d2, (%a0) |task_p=入力d2 /* TODO: step9までお預け */
 	move.w  #0xce, TPRER1 |1カウント0.1msecに設定
-	move.w  #0xc350, %d1 /* タイマ間隔のテスト値。5sec。*/
 	move.w  %d1, TCMP1 |割り込み発生周期を設定
 	move.w  #0x15, TCTL1 |タイマ使用許可
 	movem.l	(%sp)+,%a0/%d1
