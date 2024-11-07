@@ -615,7 +615,6 @@ SET_TIMER:
 	lea.l   task_p, %a0 /* TODO: step9までお預け */
 	move.l  %d2, (%a0) |task_p=入力d2 /* TODO: step9までお預け */
 	move.w  #0xce, TPRER1 |1カウント0.1msecに設定
-	move.w  #0xc350, %d1 /* タイマ間隔のテスト値。5sec。*/
 	move.w  %d1, TCMP1 |割り込み発生周期を設定
 	move.w  #0x15, TCTL1 |タイマ使用許可
 	movem.l	(%sp)+,%a0/%d1
