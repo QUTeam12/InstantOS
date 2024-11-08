@@ -64,8 +64,10 @@
 ****************************************************************
 .section .data
 TMSG:
-.ascii "\n" | \r: 行頭へ (キャリッジリターン)
+.ascii "******\n\r" | \r: 行頭へ (キャリッジリターン)
 .even | \n: 次の行へ (ラインフィード)
+ANS:
+.ascii "="
 TTC:
 .dc.w 0
 .even
@@ -109,11 +111,15 @@ STK_S:		.ds.l	1			/* スタックの要素数 */
 ** 計算結果
 ***************************************************************
 NUM:		.ds.l	1
-***************************************************************
-**からループ用
-***************************************************************
+**************************************************************
+**演算結果表示用フラグ
+**************************************************************
+NQ:		.ds.l	1
+**************************************************************
+**　からループ用変数
+**************************************************************
 Yusei:		.ds.l	1
-****************************************************************
+**************************************************************
 *** 初期値の無いデータ領域
 ****************************************************************
 BUF:
@@ -176,6 +182,7 @@ move.l	#0,s2
 lea.l	STK, %a0
 move.l %a0,STK_P
 move.l	#0,STK_S
+move.l	#1,NQ	/* キュー2へのPUT可能*/
 **jsr	TEST
 *********************
 **からループ変数初期化
@@ -183,19 +190,13 @@ move.l	#0,STK_S
 move.l	#0x5ff, Yusei
 bra MAIN
 TEST:
-	move.b	#'1',%d1
+	move.b	#'4',%d1
 	move.l #2 , %d0          /* キュー2を選択 */
 	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
-	move.b	#'1',%d1
+	move.b	#'2',%d1
 	move.l #2 , %d0          /* キュー2を選択 */
 	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
-	move.b	#'+',%d1
-	move.l #2 , %d0          /* キュー2を選択 */
-	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
-	move.b	#'1',%d1
-	move.l #2 , %d0          /* キュー2を選択 */
-	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
-	move.b	#'+',%d1
+	move.b	#'/',%d1
 	move.l #2 , %d0          /* キュー2を選択 */
 	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
 	
@@ -239,6 +240,13 @@ move.l #BUF,%D2 | p = #BUF
 trap #0
 move.l	#0x5ff, Yusei
 bra LOOP
+TT:
+	movem.l %D0-%D7/%A0-%A6,-(%SP)
+	move.l #SYSCALL_NUM_RESET_TIMER,%D0
+	trap #0
+	move.l	#1,NQ	/* エンター処理終了*/
+	movem.l (%SP)+,%D0-%D7/%A0-%A6
+
 ******************************************************
 ****Queue
 ******************************************************
@@ -483,15 +491,15 @@ INTERPUT:
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
+	cmp #0,NQ			/*エンターの処理中であるかないか */
+	beq	ViewStep
+	cmp #0x0d,%d1
+	beq	Enter		/* Enterが押されたかどうか */
+	move.l #2, %d0			/* キュー2を選択 */
+	jsr	INQ	
+ViewStep:
 	add.w	#0x0800,%d1
 	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
-	sub.w	#0x0800,%d1
-	cmp #0x0d,%d1
-	beq	Enter			/* Enterキーが入力された */
-	cmp #'\r',%d1
-	beq	INTERPUT_END
-	move.l #2, %d0			/* キュー2を選択 */
-	jsr	INQ
 	jmp 	INTERPUT_END
 
 INTERPUT_fail:
@@ -500,6 +508,7 @@ INTERPUT_fail:
 	rts
 *******エンターキーが押されたときの処理
 Enter:
+	move.l	#0,NQ	/* キュー2へのPUT不可能*/
 	cmp.l #0, s2
 	beq Enter_End
 	move.l #2,%d0			/* キュー2を選択 */
@@ -518,54 +527,78 @@ Enter_Step1:	/* スタックを用いて計算 */
 	bra Enter
 	
 calc_add:
+	move.l	#0x0,%d1
 	jsr	OUTS
 	cmp.l #0,%d0
 	beq	Error
-	move.b	%d1,%d2
+	move.l	%d1,%d2
+	move.l	#0x0,%d1
 	jsr	OUTS
 	add.w	%d2, %d1
 	jsr	INS
 	bra	Enter
 calc_sub:
+	move.l	#0x0,%d1
 	jsr	OUTS
 	cmp.l #0,%d0
 	beq	Error
-	move.b	%d1,%d2
+	move.l	%d1,%d2
+	move.l	#0x0,%d1
 	jsr	OUTS
 	sub.w	%d2, %d1
 	jsr	INS
 	bra	Enter
 calc_mul:
+	move.l	#0x0,%d1
 	jsr	OUTS
-	move.b	%d1,%d2
+	move.l	%d1,%d2
 	cmp.l #0,%d0
 	beq	Error
+	move.l	#0x0,%d1
 	jsr	OUTS
 	muls.w	%d2, %d1
 	jsr	INS
 	bra	Enter
-calc_div:/* うまく動いていない
+calc_div:/* うまく動いていない*/
+	move.b	#'B',LED7
+	move.l	#0x0,%d1
 	jsr	OUTS
-	move.b	%d1,%d2
+	move.l	%d1,%d2
 	cmp.l #0,%d0
 	beq	Error
+	move.l	#0x0,%d1
 	jsr	OUTS
 	divs.w	%d2, %d1
+	move.l	%d1,%d2
+	move.l	#0x0,%d1
+	move.w	%d2,%d1
 	jsr	INS
 	bra	Enter	
 Enter_End:
 	jsr	OUTS
 	add.b	#0x30,%d1
-	move.b	%d1,NUM
-	move.b	NUM,LED0
+	move.l	%d1,NUM
+	move.b	%d1,LED0
+	/* = */
+	move.l #SYSCALL_NUM_PUTSTRING,%D0
+	move.l #0, %D1 | ch = 0
+	move.l #ANS, %D2 | p = #TMSG
+	move.l #1, %D3 | size = 1
+	trap #0
+	/* 数字を表示 */
+	move.l #SYSCALL_NUM_PUTSTRING,%D0
+	move.l #0, %D1 | ch = 0
+	move.l #NUM, %D2 | p = #TMSG
+	move.l #4, %D3 | size = 4
+	trap #0
+	/* 改行  */
 	move.l #SYSCALL_NUM_PUTSTRING,%D0
 	move.l #0, %D1 | ch = 0
 	move.l #TMSG, %D2 | p = #TMSG
-	move.l #1, %D3 | size = 2
+	move.l #8, %D3 | size = 2
 	trap #0
-** 桁数を考えてモニターに表示
-
-	jmp INTERPUT_END
+	move.l	#1,NQ	/* エンター処理終了*/
+	bra	INTERPUT_END
 Error:
 	move.b	#'E',LED4
 	move.b	#'r',LED3
