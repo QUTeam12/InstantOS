@@ -64,7 +64,7 @@
 ****************************************************************
 .section .data
 TMSG:
-.ascii "******\n\r" | \r: 行頭へ (キャリッジリターン)
+.ascii "\n\r" | \r: 行頭へ (キャリッジリターン)
 .even | \n: 次の行へ (ラインフィード)
 ANS:
 .ascii "="
@@ -110,7 +110,8 @@ STK_S:		.ds.l	1			/* スタックの要素数 */
 ***************************************************************
 ** 計算結果
 ***************************************************************
-NUM:		.ds.l	1
+NUM:		.ds.b	8
+NUM_ANS:	.ds.w	1
 **************************************************************
 **演算結果表示用フラグ
 **************************************************************
@@ -190,13 +191,13 @@ move.l	#1,NQ	/* キュー2へのPUT可能*/
 move.l	#0x5ff, Yusei
 bra MAIN
 TEST:
-	move.b	#'4',%d1
+	move.b	#'e',%d1
 	move.l #2 , %d0          /* キュー2を選択 */
 	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
-	move.b	#'2',%d1
+	move.b	#'e',%d1
 	move.l #2 , %d0          /* キュー2を選択 */
 	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
-	move.b	#'/',%d1
+	move.b	#'*',%d1
 	move.l #2 , %d0          /* キュー2を選択 */
 	jsr	INQ		        /*data->%D1.b  %D0に結果を格納*/
 	
@@ -247,6 +248,133 @@ TT:
 	move.l	#1,NQ	/* エンター処理終了*/
 	movem.l (%SP)+,%D0-%D7/%A0-%A6
 
+****************************************************
+** ascii変換
+***************************************************
+**in->%d1(w)	out->%d1(w)
+To_Ascii:
+	movem.l	%d0,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
+	move.l	#'0',%d0
+	cmp.l	#0x0,%d1
+	beq	C_Ascii
+	move.l	#'1',%d0
+	cmp.l	#0x1,%d1
+	beq	C_Ascii
+	move.l	#'2',%d0
+	cmp.l	#0x2,%d1
+	beq	C_Ascii
+	move.l	#'3',%d0
+	cmp.l	#0x3,%d1
+	beq	C_Ascii
+	move.l	#'4',%d0
+	cmp.l	#0x4,%d1
+	beq	C_Ascii
+	move.l	#'5',%d0
+	cmp.l	#0x5,%d1
+	beq	C_Ascii
+	move.l	#'6',%d0
+	cmp.l	#0x6,%d1
+	beq	C_Ascii
+	move.l	#'7',%d0
+	cmp.l	#0x7,%d1
+	beq	C_Ascii
+	move.l	#'8',%d0
+	cmpl.	#0x8,%d1
+	beq	C_Ascii
+	move.l	#'9',%d0
+	cmp.l	#0x9,%d1
+	beq	C_Ascii
+	move.l	#'a',%d0
+	cmp.l	#0xa,%d1
+	beq	C_Ascii
+	move.l	#'b',%d0
+	cmp.l	#0xb,%d1
+	beq	C_Ascii
+	move.l	#'c',%d0
+	cmp.l	#0xc,%d1
+	beq	C_Ascii
+	move.l	#'d',%d0
+	cmp.l	#0xd,%d1
+	beq	C_Ascii
+	move.l	#'e',%d0
+	cmp.l	#0xe,%d1
+	beq	C_Ascii
+	move.l	#'f',%d0
+	cmp.l	#0xf,%d1
+	beq	C_Ascii
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%d0	/*切り替え前のスタックからレジスタ回復*/
+	rts
+C_Ascii:
+	move.l	%d0,%d1
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%d0	/*切り替え前のスタックからレジスタ回復*/
+	rts
+******************************************************
+**NUM変換
+******************************************************
+To_Num:
+	movem.l	%d0,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
+	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
+	move.l	#0,%d0
+	cmp.l	#'0',%d1
+	beq	C_Num
+	move.l	#1,%d0
+	cmp.l	#'1',%d1
+	beq	C_Num
+	move.l	#2,%d0
+	cmp.l	#'2',%d1
+	beq	C_Num
+	move.l	#3,%d0
+	cmp.l	#'3',%d1
+	beq	C_Num
+	move.l	#4,%d0
+	cmp.l	#'4',%d1
+	beq	C_Num
+	move.l	#5,%d0
+	cmp.l	#'5',%d1
+	beq	C_Num
+	move.l	#6,%d0
+	cmp.l	#'6',%d1
+	beq	C_Num
+	move.l	#7,%d0
+	cmp.l	#'7',%d1
+	beq	C_Num
+	move.l	#8,%d0
+	cmpl.	#'8',%d1
+	beq	C_Num
+	move.l	#9,%d0
+	cmp.l	#'9',%d1
+	beq	C_Num
+	move.l	#0xa,%d0
+	cmp.l	#'a',%d1
+	beq	C_Num
+	move.l	#0xb,%d0
+	cmp.l	#'b',%d1
+	beq	C_Num
+	move.l	#0xc,%d0
+	cmp.l	#'c',%d1
+	beq	C_Num
+	move.l	#0xd,%d0
+	cmp.l	#'d',%d1
+	beq	C_Num
+	move.l	#0xe,%d0
+	cmp.l	#'e',%d1
+	beq	C_Num
+	move.l	#0xf,%d0
+	cmp.l	#'f',%d1
+	beq	C_Num
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%d0	/*切り替え前のスタックからレジスタ回復*/
+	rts
+C_Num:
+	move.l	%d0,%d1
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%d0	/*切り替え前のスタックからレジスタ回復*/
+	rts
 ******************************************************
 ****Queue
 ******************************************************
@@ -491,7 +619,7 @@ INTERPUT:
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
-	cmp #0,NQ			/*エンターの処理中であるかないか */
+	cmp.l #0,NQ			/*エンターの処理中であるかないか */
 	beq	ViewStep
 	cmp #0x0d,%d1
 	beq	Enter		/* Enterが押されたかどうか */
@@ -522,7 +650,7 @@ Enter_Step1:	/* スタックを用いて計算 */
 	beq	calc_mul
 	cmp.b	#'/',%d1
 	beq	calc_div
-	sub.w	#0x30,%d1
+	jsr	To_Num
 	jsr	INS			/* スタックに転送 */
 	bra Enter
 	
@@ -576,7 +704,6 @@ calc_div:/* うまく動いていない*/
 	bra	Enter	
 Enter_End:
 	jsr	OUTS
-	add.b	#0x30,%d1
 	move.l	%d1,NUM
 	move.b	%d1,LED0
 	/* = */
@@ -585,19 +712,57 @@ Enter_End:
 	move.l #ANS, %D2 | p = #TMSG
 	move.l #1, %D3 | size = 1
 	trap #0
+	lea.l	NUM,%a0
+	move.l	#5,%d5
+Equal_Loop1:
+	sub.l	#1,%d5
+	beq	Equal_End
+	move.b	(%a0)+,%d4
+	cmp.l	#0,%d4
+	beq	Equal_Loop1
+	bra	Equal_Loop3
+Equal_Loop2:
+	sub.l	#1,%d5
+	beq	Equal_End
+	move.b	(%a0)+,%d4
+Equal_Loop3:
+	move.l	%d4, %d1
+	and.w	#0xf0,%d1
+	ROL.b	#4,%d1
+	jsr	To_Ascii
+	move.w	%d1,NUM_ANS
 	/* 数字を表示 */
 	move.l #SYSCALL_NUM_PUTSTRING,%D0
 	move.l #0, %D1 | ch = 0
-	move.l #NUM, %D2 | p = #TMSG
-	move.l #4, %D3 | size = 4
+	move.l #NUM_ANS, %D2 | p = #TMSG
+	move.l #4, %D3 | size = 1
 	trap #0
+	move.l	%d4, %d1
+	and.w	#0x0f,%d1
+	jsr	To_Ascii
+	move.w	%d1,NUM_ANS
+	/* 数字を表示 */
+	move.l #SYSCALL_NUM_PUTSTRING,%D0
+	move.l #0, %D1 | ch = 0
+	move.l #NUM_ANS, %D2 | p = #TMSG
+	move.l #4, %D3 | size = 1
+	trap #0
+	bra	Equal_Loop2
+Equal_End:
 	/* 改行  */
 	move.l #SYSCALL_NUM_PUTSTRING,%D0
 	move.l #0, %D1 | ch = 0
 	move.l #TMSG, %D2 | p = #TMSG
-	move.l #8, %D3 | size = 2
+	move.l #2, %D3 | size = 2
 	trap #0
-	move.l	#1,NQ	/* エンター処理終了*/
+	** システムコールによる RESET_TIMER の起動
+    	move.l #SYSCALL_NUM_RESET_TIMER,%D0
+    	trap #0
+** システムコールによる SET_TIMER の起動
+    	move.l #SYSCALL_NUM_SET_TIMER, %D0
+    	move.w #5000, %D1
+    	move.l #TT, %D2
+    	trap #0
 	bra	INTERPUT_END
 Error:
 	move.b	#'E',LED4
