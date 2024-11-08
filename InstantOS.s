@@ -90,13 +90,13 @@ top0:		.ds.b	255			/*キューの戦闘の番地*/
 bottom0:	.ds.b	1			/*キューの末尾の番地*/
 out0:		.ds.l	1			/*次に取り出すデータのある番地*/
 in0:		.ds.l	1 			/*次にデータを入れるべき番地*/
-s0:		.ds.l	1			/*キューに溜まっているデータの数*/
+s0:		.ds.l	1				/*キューに溜まっているデータの数*/
 
 top1:		.ds.b	255			/*キューの戦闘の番地*/
 bottom1:	.ds.b	1			/*キューの末尾の番地*/
 out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
-s1:		.ds.l	1			/*キューに溜まっているデータの数*/
+s1:		.ds.l	1				/*キューに溜まっているデータの数*/
 
 ****************************************************************
 *** 初期値の無いデータ領域
@@ -109,8 +109,6 @@ USR_STK:
 .even
 USR_STK_TOP: | ユーザスタック領域の最後尾
 
-
-WORK:		.ds.b 256			/* 受信制御部テスト　*/
 
 ***************************************************************
 ** 初期化
@@ -158,13 +156,9 @@ bra MAIN
 *****************
 MAIN:
 **メイン以降をデバッグ
-    **jsr Put
     move.w #0x2000,%SR				/* 割り込み許可．(スーパーバイザモードの場合) */
     move.l #Mask_UART1_Timer,IMR 			| All UnMask
     move.w #U_Put_Interupt, USTCNT1 	|受信割り込みのみ許可
-    **jmp	INQ_OUTQ_TEST
-    **jsr	PUTSTRING_TEST
-    **jsr	GETSTRING_TEST
     move.w #0x0000, %SR | USER MODE, LEVEL 0
     lea.l USR_STK_TOP,%SP | user stack の設定
 ** システムコールによる RESET_TIMER の起動
@@ -180,7 +174,6 @@ MAIN:
 * ターミナルの入力をエコーバックする
 ******************************
 LOOP:
-    **jmp HardwareInterface			/* シミュレータテスト用 */
     move.l #SYSCALL_NUM_GETSTRING, %D0
     move.l #0, %D1 | ch = 0
     move.l #BUF, %D2 | p = #BUF
@@ -214,127 +207,7 @@ TTKILL:
 TTEND:
     movem.l (%SP)+,%D0-%D7/%A0-%A6
     rts
-*********************************************************
-**TEST
-********************************************************
-********受信制御部のテスト
-GETSTRING_TEST:
-	move.b #'T',LED5
-	move.l	#0xfffff,%d4
-GETSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	GETSTRING_TEST2
-	jmp	GETSTRING_TEST_LOOP
-GETSTRING_TEST2:
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.l #256, %d3
-	move.b #'G',LED7
-	jsr GETSTRING
-	move.l %d0, %d3
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.b #'P',LED6
-	jsr PUTSTRING
-	move.b #'S',LED5
-	jmp GETSTRING_TEST
-	
-********INTERPUTの動作テスト
-********キューに文字を格納する
-Put:
-    movem.l %d0-%d2, -(%sp)
-    move.b #0x61, %d1  |d0='a'
-    move.b #16, %d2
-PutLoop:
-    move.l #1,%d0
-    jsr INQ
-    cmpi.l #0,%d0
-    beq EndPut
-    subq.b #1 , %d2
-    beq EndPutLoop
-    bra PutLoop
-EndPutLoop:
-    addi.b #1,%d1
-    move.b #16,%d2
-    bra PutLoop
 
-EndPut:
-    move.l #256, s1
-    movem.l (%sp)+,%d0-%d2 
-	rts
-
-********PUTSTRINGの動作テスト
-********キューに文字を格納する
-
-PUTSTRING_TEST:
-	move.l	#0,%d1
-	lea.l 	TDATA1,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	
-PUTSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP
-	
-PUTSTRING_TEST2:
-	move.l	#0,%d1
-	lea.l 	TDATA2,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	jmp	PUTSTRING_TEST_LOOP3
-	jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP2:
-	jmp	PUTSTRING_TEST_LOOP2
-	
-	**jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP3:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP3
-
-**inq outqてすと
-
-
-INQ_OUTQ_TEST:
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jmp	INQ_OUTQ_TEST
-	
-
-INQ_INPUT:
-	move.l #0,%d0
-	move.b #0x61,%d1
-	jsr INQ
-	rts
-
-OUTQ_INPUT:
-	move.l #0,%d0
-	jsr OUTQ
-	rts
 	
 ******************************************************
 ****Queue
@@ -344,25 +217,26 @@ INQ:
 	**	番号noのキューにデータをいれる
 	**	入力 no->d0.l	書き込む8bitdata->d1.b
 	**	出力 失敗0/成功1 ->d0.l
+	
 	movem.l	%a0/%a1/%d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
-	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	%sr,-(%sp)			/*srの値を一時退避*/
 	move.w 	#0x2700,%SR			/*割り込み禁止(走行レベル7)*/
-	cmp.l 	#0,%d0			/*キュー番号が0*/
+	cmp.l 	#0,%d0				/*キュー番号が0*/
 	beq	INQ0
-	cmp.l 	#1,%d0			/*キュー番号が1*/
+	cmp.l 	#1,%d0				/*キュー番号が1*/
 	beq	INQ1
-	jmp	Queue_fail		/*キュー番号が存在しない*/
+	jmp	Queue_fail				/*キュー番号が存在しないとき*/
 
 	
 INQ0:	
 	cmp.l	#256,s0
-	beq	Queue_fail		/*キューが満杯で失敗*/
+	beq	Queue_fail				/*キューが満杯で失敗*/
 	move.l	in0,%a0			
-	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	move.b	%d1,(%a0)			/*データをキューに書き込み*/
 	lea.l	bottom0,%a1
 	cmp.l	%a1,%a0
-	beq	INQ0_step1		/*in==bottomのときin=top*/
-	add.l	#1,in0			/*in++*/
+	beq	INQ0_step1				/*in==bottomのときin=top*/
+	add.l	#1,in0				/*in++*/
 	jmp	INQ0_step2
 
 INQ0_step1:
@@ -371,21 +245,21 @@ INQ0_step1:
 	
 
 INQ0_step2:
-	add.l	#1,s0 			/*s++*/
-	move.l	#1,%d0			/*成功を報告*/
+	add.l	#1,s0 				/*s++*/
+	move.l	#1,%d0				/*成功を報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 INQ1:	
 	cmp.l	#256,s1
-	beq	Queue_fail		/*キューが満杯で失敗*/
+	beq	Queue_fail				/*キューが満杯で失敗*/
 	move.l	in1,%a0			
-	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	move.b	%d1,(%a0)			/*データをキューに書き込み*/
 	lea.l	bottom1,%a1
 	cmp.l	%a1,%a0
-	beq	INQ1_step1		/*in==bottomのときin=top*/
-	add.l	#1,in1			/*in++*/
+	beq	INQ1_step1				/*in==bottomのときin=top*/
+	add.l	#1,in1				/*in++*/
 	jmp	INQ1_step2
 
 INQ1_step1:
@@ -393,8 +267,8 @@ INQ1_step1:
 	move.l	%a0,in1
 
 INQ1_step2:
-	add.l	#1,s1 			/*s++*/
-	move.l	#1,%d0			/*成功を報告*/
+	add.l	#1,s1 				/*s++*/
+	move.l	#1,%d0				/*成功を報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
@@ -404,25 +278,26 @@ OUTQ:
 	**	番号noのキューからデータを一つ取り出す
 	**	入力 キューの番号->d0.l
 	**	出力 失敗0/成功1 ->d0.l		取り出した8bitdata ->d1.b
+	
 	movem.l	%a0/%a1/%d2,-(%sp)	/*切り替え前のスタックにレジスタ退避*/
-	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	%sr,-(%sp)			/*srの値を一時退避*/
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
-	cmp.l 	#0,%d0			/*キュー番号が0*/
+	cmp.l 	#0,%d0				/*キュー番号が0*/
 	beq	OUTQ0
-	cmp.l 	#1,%d0			/*キュー番号が1*/
+	cmp.l 	#1,%d0				/*キュー番号が1*/
 	beq	OUTQ1
-	jmp	Queue_fail		/*キュー番号が存在しない*/
+	jmp	Queue_fail				/*キュー番号が存在しない*/
 	
 
 OUTQ0:	
 	cmp.l	#0,s0
-	beq	Queue_fail		/*キューが満杯で失敗*/
+	beq	Queue_fail				/*キューが満杯で失敗*/
 	move.l	out0,%a0			
-	move.b	(%a0),%d1		/*データをキューから取り出し*/
+	move.b	(%a0),%d1			/*データをキューから取り出し*/
 	lea.l	bottom0,%a1
 	cmp.l	%a1,%a0
-	beq	OUTQ0_step1		/*out==bottomのときout=top*/
-	add.l	#1,out0			/*out++*/
+	beq	OUTQ0_step1				/*out==bottomのときout=top*/
+	add.l	#1,out0				/*out++*/
 	jmp	OUTQ0_step2
 
 OUTQ0_step1:
@@ -430,21 +305,21 @@ OUTQ0_step1:
 	move.l	%a0,out0
 	
 OUTQ0_step2:
-	sub.l	#1,s0 			/*s--*/
-	move.l	#1,%d0			/*成功を報告*/
+	sub.l	#1,s0 				/*s--*/
+	move.l	#1,%d0				/*成功を報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 OUTQ1:	
 	cmp.l	#0,s1
-	beq	Queue_fail		/*キューが満杯で失敗*/
+	beq	Queue_fail				/*キューが満杯で失敗*/
 	move.l	out1,%a0			
-	move.b	(%a0),%d1		/*データをキューから取り出し*/
+	move.b	(%a0),%d1			/*データをキューから取り出し*/
 	lea.l	bottom1,%a1
 	cmp.l	%a1,%a0
-	beq	OUTQ1_step1		/*out==bottomのときout=top*/
-	add.l	#1,out1			/*out++*/
+	beq	OUTQ1_step1				/*out==bottomのときout=top*/
+	add.l	#1,out1				/*out++*/
 	jmp	OUTQ1_step2
 
 OUTQ1_step1:
@@ -452,15 +327,15 @@ OUTQ1_step1:
 	move.l	%a0,out1
 
 OUTQ1_step2:
-	sub.l	#1,s1 			/*s--*/
-	move.l	#1,%d0			/*成功を報告*/
+	sub.l	#1,s1 				/*s--*/
+	move.l	#1,%d0				/*成功を報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
 	
 Queue_fail:
-	move.l #0,%d0			/*失敗の報告*/
+	move.l #0,%d0				/*失敗の報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
@@ -471,40 +346,41 @@ Queue_fail:
 **入力：ch->%d1.l data->%d2.b
 ***************************************************
 INTERGET:
-	move.w 	%sr,-(%sp)	/*srの値を一時退避*/
-	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
+	move.w 	%sr,-(%sp)			/*srの値を一時退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
-	bne	INTERGET_END	/*chが0でないなら何もせずに復帰*/
-	
-    	move.l	#0,%d0          /* キュー0を選択 */
+	bne	INTERGET_END			/*chが0でないなら何もせずに復帰*/
+    move.l	#0,%d0          	/* キュー0を選択 */
 	move.b	%d2,%d1		
-	jsr	INQ		/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
+	jsr	INQ						/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
 
 INTERGET_END:
-	move.w  (%sp)+, %sr	/*スーパースタックから走行レベル回復*/
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	rts
 
 
-/* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
-入力：ch->%D1.l */
+***************************************************
+**INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
+**入力：ch->%D1.l	小紫
+***************************************************
 INTERPUT:
-	move.w 	%sr,-(%sp)				/*srの値を一時退避*/
+	move.w 	%sr,-(%sp)			/*srの値を一時退避*/
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
-	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-    	move.l #1 , %d0          /* キュー1を選択 */
-	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
+	bne	INTERPUT_END			/*chが0でないなら何もせずに復帰*/
+    	move.l #1 , %d0         /* キュー1を選択 */
+	jsr	OUTQ		        	/*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
 	add.w	#0x0800,%d1
-	move.w	%d1,UTX1	/*符号拡張してdataをUTX1に格納*/
+	move.w	%d1,UTX1			/*符号拡張してdataをUTX1に格納*/
 	jmp 	INTERPUT_END
 INTERPUT_fail:
 	move.w	#U_Put_Interupt,USTCNT1	/*OUTQが失敗なら送信割り込み禁止にして復帰*/
-	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	rts
 INTERPUT_END:
-	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	rts
 
 ******************************************************************************
@@ -519,33 +395,33 @@ PUTSTRING:
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
-	bne	PUTSTRING_END 	/*ch≠0なら何もせず復帰*/
+	bne	PUTSTRING_END 			/*ch≠0なら何もせず復帰*/
 
-	move.l	#0,%d4		/*sz->%d4*/
-	movea.l %d2,%a0 	/*i->a0*/ 
+	move.l	#0,%d4				/*sz->%d4*/
+	movea.l %d2,%a0 			/*i->a0*/ 
 	
 	cmp.l	#0,%d3
-	beq	PUTSTRING_STEP2 /*size=0なら分岐*/
+	beq	PUTSTRING_STEP2 		/*size=0なら分岐*/
 	
 PUTSTRING_LOOP:
 	cmp.l	%d4,%d3
-	beq	PUTSTRING_STEP1 /*sz=sizeなら分岐*/
+	beq	PUTSTRING_STEP1 		/*sz=sizeなら分岐*/
 
 	move.l	#1,%d0
 	move.b 	(%a0)+,%d1
-	jsr	INQ 		/*INQ(no->d0.l,data->d1.b)*/
+	jsr	INQ 					/*INQ(no->d0.l,data->d1.b)*/
 
 	cmp.l	#0,%d0
-	beq	PUTSTRING_STEP1 /*INQが失敗なら分岐*/
+	beq	PUTSTRING_STEP1 		/*INQが失敗なら分岐*/
 
-	addq.l	#1,%d4		/*sz++*/
+	addq.l	#1,%d4				/*sz++*/
 	bra	PUTSTRING_LOOP 
 	
 PUTSTRING_STEP1:
-	move.w	#0xE10C,USTCNT1 /*送信割り込み許可*/
+	move.w	#0xE10C,USTCNT1 	/*送信割り込み許可*/
 		
 PUTSTRING_STEP2:
-	move.l %d4,%d0
+	move.l %d4,%d0				/*送信結果書き込み	小紫*/
 
 PUTSTRING_END:
 	move.w  (%sp)+, %sr			/*走行レベル回復*/
@@ -553,7 +429,7 @@ PUTSTRING_END:
 	rts
 
 
- ******************************************************************************
+******************************************************************************
 ** GETSTRING(ch, p, size)
 **chの受信キューからsizeバイトのデータを取り出し、p番地以降にコピーする
 **入力： ch->%d1.l  p->%d2.l  size->%d3.l
@@ -565,24 +441,24 @@ GETSTRING:
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
-	bne	GETSTRING_END 	/*ch≠0なら何もせず復帰*/
+	bne	GETSTRING_END 			/*ch≠0なら何もせず復帰*/
 
-	move.l	#0,%d4		/*sz->%d4*/
-	movea.l %d2,%a0 	/*i->a0*/ 
+	move.l	#0,%d4				/*sz->%d4*/
+	movea.l %d2,%a0 			/*i->a0*/ 
 	
 GETSTRING_LOOP:
 	cmp.l	%d4,%d3
-	beq	GETSTRING_STEP1 /*sz=sizeなら分岐*/
+	beq	GETSTRING_STEP1 		/*sz=sizeなら分岐*/
 
 	move.l	#0,%d0
 	jsr	OUTQ 
 	
 	cmp.l	#0,%d0
-	beq	GETSTRING_STEP1 /*OUTQが失敗なら分岐*/
-	move.b %d1,(%a0)	/*i番地にデータをコピー*/
+	beq	GETSTRING_STEP1 		/*OUTQが失敗なら分岐*/
+	move.b %d1,(%a0)			/*i番地にデータをコピー*/
 
-	addq.l	#1,%d4		/*sz++*/
-	addq.l	#1,%a0		/*i++*/
+	addq.l	#1,%d4				/*sz++*/
+	addq.l	#1,%a0				/*i++*/
 	bra	GETSTRING_LOOP 
 		
 GETSTRING_STEP1:
@@ -637,13 +513,13 @@ HardwareInterface:
 INTERGET_PREPARE:
 	moveq.l #0,%d1 /* ch = %d1.l = 0 */
 	jsr INTERGET
-    	movem.l (%sp)+,%a0-%a7/%d1-%d7
-    	rte
+    movem.l (%sp)+,%a0-%a7/%d1-%d7
+    rte
 INTERPUT_PREPARE:
-    	move.l #0, %d1
-    	jsr INTERPUT
-    	movem.l (%sp)+,%a0-%a7/%d1-%d7
-    	rte
+    move.l #0, %d1
+    jsr INTERPUT
+    movem.l (%sp)+,%a0-%a7/%d1-%d7
+    rte
 TimerInterface:
 	movem.l %a0-%a7/%d1-%d7, -(%sp)
 	btst.b  #0, TSTAT1+1 |コンペアイベント発生チェック
@@ -653,7 +529,7 @@ TimerInterface:
 	movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
 return:
-    	movem.l (%sp)+,%a0-%a7/%d1-%d7 
+    movem.l (%sp)+,%a0-%a7/%d1-%d7 
 	rte
 ******************
 ** CALL_RP()
