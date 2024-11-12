@@ -4,10 +4,10 @@
 ***************
 ** システムコール番号
 ***************
-	.equ SYSCALL_NUM_GETSTRING, 1
-	.equ SYSCALL_NUM_PUTSTRING, 2
-	.equ SYSCALL_NUM_RESET_TIMER, 3
-	.equ SYSCALL_NUM_SET_TIMER, 4
+	.equ SYSCALL_NUM_GETSTRING, 	1
+	.equ SYSCALL_NUM_PUTSTRING, 	2
+	.equ SYSCALL_NUM_RESET_TIMER, 	3
+	.equ SYSCALL_NUM_SET_TIMER, 	4
 ***************
 ** レジスタ群の先頭
 ***************
@@ -162,15 +162,10 @@ MAIN:
 	move.l 	#TT, %D2
 	trap 	#0
 ******************************
-* sys_GETSTRING, sys_PUTSTRING のテスト
-* ターミナルの入力をエコーバックする
+** sys_GETSTRING, sys_PUTSTRING のテスト
+** ターミナルの入力をエコーバックする
 ******************************
 LOOP:
-	move.w	#0x5ff,LOOP_COUNTER	/*空ループ用カウンタを初期化*/
-EMPTY_LOOP:
-	sub.w	#1,LOOP_COUNTER
-	bne	EMPTY_LOOP
-	/*空ループ終わり*/
 	move.l #SYSCALL_NUM_GETSTRING, %D0
 	move.l #0, %D1 | ch = 0
 	move.l #BUF, %D2 | p = #BUF
@@ -190,14 +185,14 @@ EMPTY_LOOP:
 TT:
    	movem.l %D0-%D7/%A0-%A6,-(%SP)
 	cmpi.w #5,TTC 			| TTC カウンタで 5 回実行したかどうか数える
-	beq TTKILL 				| 5 回実行したら，タイマを止める
+	beq TTKILL 			| 5 回実行したら，タイマを止める
 	move.l #SYSCALL_NUM_PUTSTRING,%D0
 	move.l #0, %D1 			| ch = 0
-	move.l #TMSG, %D2 			| p = #TMSG
+	move.l #TMSG, %D2 		| p = #TMSG
 	move.l #8, %D3 			| size = 8
 	trap #0
 	addi.w #1,TTC 			| TTC カウンタを 1 つ増やして
-	bra TTEND 				| そのまま戻る
+	bra TTEND 			| そのまま戻る
 TTKILL:
 	move.l #SYSCALL_NUM_RESET_TIMER,%D0
 	trap #0
@@ -343,8 +338,6 @@ Queue_fail:
 **入力：ch->%d1.l data->%d2.b
 ***************************************************
 INTERGET:
-	move.w 	%sr,-(%sp)		/*srの値を一時退避*/
-	move.w 	#0x2700,%sr		/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
 	bne	INTERGET_END		/*chが0でないなら何もせずに復帰*/
     	move.l	#0,%d0          	/* キュー0を選択 */
@@ -352,7 +345,6 @@ INTERGET:
 	jsr	INQ			/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
 
 INTERGET_END:
-	move.w  (%sp)+, %sr		/*走行レベル回復*/
 	rts
 
 
@@ -388,8 +380,6 @@ INTERPUT_END:
 ******************************************************************************
 PUTSTRING:
 	movem.l	%a0/%d4,-(%sp)
-	move.w 	%sr,-(%sp)		/*走行レベル退避*/
-	move.w 	#0x2700,%sr		/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
 	bne	PUTSTRING_END 		/*ch≠0なら何もせず復帰*/
@@ -421,7 +411,6 @@ PUTSTRING_STEP2:
 	move.l %d4,%d0			/*送信結果書き込み	小紫*/
 
 PUTSTRING_END:
-	move.w  (%sp)+, %sr		/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
 
@@ -434,8 +423,6 @@ PUTSTRING_END:
 ******************************************************************************
 GETSTRING:
 	movem.l	%a0/%d4,-(%sp)
-	move.w 	%sr,-(%sp)		/*走行レベル退避*/
-	move.w 	#0x2700,%sr		/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
 	bne	GETSTRING_END 		/*ch≠0なら何もせず復帰*/
@@ -462,7 +449,6 @@ GETSTRING_STEP1:
 	move.l %d4,%d0
 
 GETSTRING_END:
-	move.w  (%sp)+, %sr		/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
 ****************
@@ -534,9 +520,12 @@ return:
 ** 入力、戻り値なし
 ******************
 CALL_RP:
+	move.w 	%sr,-(%sp)		/*srの値を一時退避*/
+	move.w 	#0x2700,%sr		/*割り込み禁止(走行レベル7)*/
 	lea.l   task_p, %a0
 	movea.l (%a0), %a1 		|a1=task_p 	
-	jsr     (%a1) 			|task_pへジャンプ  		
+	jsr     (%a1) 			|task_pへジャンプ  
+	move.w  (%sp)+, %sr		/*走行レベル回復*/		
 	rts
 
 	
