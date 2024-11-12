@@ -55,8 +55,8 @@
 **Timer
 
 **UART1
-.equ U_Reset,   	  		0x0000
-.equ U_Putpull,		  		0xE100
+.equ U_Reset,   	  	0x0000
+.equ U_Putpull,		  	0xE100
 .equ U_Put_Interupt,  		0xE108
 .equ U_PutPull_Interupt,	0xE10C
 ****************************************************************
@@ -68,8 +68,6 @@ TMSG:
 .even | \n: 次の行へ (ラインフィード)
 ANS:
 .ascii "="
-TTC:
-.dc.w 0
 .even
 ***************************************************************
 ** スタック領域の確保
@@ -117,9 +115,9 @@ NUM_ANS:	.ds.w	1
 **************************************************************
 NQ:		.ds.l	1
 **************************************************************
-**　からループ用変数
+**　空ループ用変数
 **************************************************************
-Yusei:		.ds.l	1
+NL:		.ds.l	1
 **************************************************************
 *** 初期値の無いデータ領域
 ****************************************************************
@@ -184,11 +182,8 @@ lea.l	STK, %a0
 move.l %a0,STK_P
 move.l	#0,STK_S
 move.l	#1,NQ	/* キュー2へのPUT可能*/
-**jsr	TEST
-*********************
-**からループ変数初期化
-*********************
-move.l	#0x5ff, Yusei
+**jsr	TEST	/* テスト用関数 */
+move.l	#0x5ff,NL /* 空ループ変数初期化 */
 bra MAIN
 TEST:
 	move.b	#'e',%d1
@@ -211,37 +206,27 @@ TEST:
 **ループ
 *****************
 MAIN:
-**メイン以降をデバッグ
-    **jsr Put
-    move.w #0x2000,%SR				/* 割り込み許可．(スーパーバイザモードの場合) */
-    move.l #Mask_UART1_Timer,IMR 			| All UnMask
-    move.w #U_Put_Interupt, USTCNT1 	|受信割り込みのみ許可
-    **jmp	INQ_OUTQ_TEST
-    **jsr	PUTSTRING_TEST
-    **jsr	GETSTRING_TEST
-    move.w #0x0000, %SR | USER MODE, LEVEL 0
-    lea.l USR_STK_TOP,%SP | user stack の設定
-******************************
-* sys_GETSTRING, sys_PUTSTRING のテスト
-* ターミナルの入力をエコーバックする
-******************************
+	move.w #0x2000,%SR				/* 割り込み許可．(スーパーバイザモードの場合) */
+	move.l #Mask_UART1_Timer,IMR 			| All UnMask
+	move.w #U_Put_Interupt, USTCNT1 	|受信割り込みのみ許可
+	move.w #0x0000, %SR | USER MODE, LEVEL 0
+	lea.l USR_STK_TOP,%SP | user stack の設定
 LOOP:
-sub.l	#1,Yusei
-cmp.l	#0,Yusei
-bne	LOOP
-move.l #SYSCALL_NUM_GETSTRING, %D0
-move.l #0, %D1 | ch = 0
-move.l #BUF, %D2 | p = #BUF
-move.l #256, %D3 | size = 256
-trap #0
-move.l %D0, %D3 | size = %D0 (length of given string)
-move.l #SYSCALL_NUM_PUTSTRING, %D0
-move.l #0, %D1 | ch = 0
-move.l #BUF,%D2 | p = #BUF
-trap #0
-move.l	#0x5ff, Yusei
-bra LOOP
-TT:
+	sub.l	#1,NL
+	bne	LOOP
+	move.l	#0x5ff, NL	/* 	空ループ処理	*/
+	move.l #SYSCALL_NUM_GETSTRING, %D0
+	move.l #0, %D1 | ch = 0
+	move.l #BUF, %D2 | p = #BUF
+	move.l #256, %D3 | size = 256
+	trap #0
+	move.l %D0, %D3 | size = %D0 (length of given string)
+	move.l #SYSCALL_NUM_PUTSTRING, %D0
+	move.l #0, %D1 | ch = 0
+	move.l #BUF,%D2 | p = #BUF
+	trap #0
+	bra LOOP
+TT:	/* タイマー呼び出し関数 */
 	movem.l %D0-%D7/%A0-%A6,-(%SP)
 	move.l #SYSCALL_NUM_RESET_TIMER,%D0
 	trap #0
@@ -654,7 +639,7 @@ Enter_Step1:	/* スタックを用いて計算 */
 	jsr	INS			/* スタックに転送 */
 	bra Enter
 	
-calc_add:
+calc_add:	/* 足し算処理 */
 	move.l	#0x0,%d1
 	jsr	OUTS
 	cmp.l #0,%d0
@@ -665,7 +650,7 @@ calc_add:
 	add.w	%d2, %d1
 	jsr	INS
 	bra	Enter
-calc_sub:
+calc_sub:	/* 引き算処理 */
 	move.l	#0x0,%d1
 	jsr	OUTS
 	cmp.l #0,%d0
@@ -676,7 +661,7 @@ calc_sub:
 	sub.w	%d2, %d1
 	jsr	INS
 	bra	Enter
-calc_mul:
+calc_mul:	/* 掛け算処理 */
 	move.l	#0x0,%d1
 	jsr	OUTS
 	move.l	%d1,%d2
@@ -687,7 +672,7 @@ calc_mul:
 	muls.w	%d2, %d1
 	jsr	INS
 	bra	Enter
-calc_div:/* うまく動いていない*/
+calc_div:	/* 割り算処理 */
 	move.b	#'B',LED7
 	move.l	#0x0,%d1
 	jsr	OUTS
