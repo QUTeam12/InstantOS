@@ -103,6 +103,8 @@ s1:		.ds.l	1				/*キューに溜まっているデータの数*/
 ****************************************************************
 BUF:
 .ds.b 256 | BUF[256]
+LOOP_COUNTER:
+.ds.b 1	  | 空ループのカウンタ
 .even
 USR_STK:
 .ds.b 0x4000 | ユーザスタック領域
@@ -174,6 +176,11 @@ MAIN:
 * ターミナルの入力をエコーバックする
 ******************************
 LOOP:
+	move.b	#0xff,LOOP_COUNTER	/*空ループ用カウンタを初期化*/
+EMPTY_LOOP:
+	sub.b	#1,LOOP_COUNTER
+	bne		EMPTY_LOOP
+	/*空ループ終わり*/
     move.l #SYSCALL_NUM_GETSTRING, %D0
     move.l #0, %D1 | ch = 0
     move.l #BUF, %D2 | p = #BUF
