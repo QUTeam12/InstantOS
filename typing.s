@@ -74,7 +74,6 @@ speed_msg:    .ascii "typing speed(letter/min): "
 newline:      .ascii "\r\n"
 words:        .ascii "abc"
 
-is_gameover: .dc.b 0
 .even
 ***************************************************************
 ** スタック領域の確保
@@ -123,8 +122,10 @@ USR_STK:
 .even
 USR_STK_TOP: | ユーザスタック領域の最後尾
 
-level_input:
-.ds.b 1
+level_input:	.ds.w 1 | レベル格納用変数
+loop_counter:	.ds.w 1 | 空ループ用変数
+enabled_check_mode: 	.ds.b 1 | INTERGETで文字列チェックを行うかどうかのフラグ変数
+is_gameover:	.ds.b 1 | ゲームオーバーかどうかのフラグ変数
 .even
 ***************************************************************
 ** 初期化
@@ -168,9 +169,22 @@ boot: * スーパーバイザ & 各種設定を行っている最中の割込禁
 	move.l	%a0,in2
 	move.l  %a0,out2
 	move.l	#0,s2
-	bra	MAIN
 
 ****************
+** ループ変数の初期化
+*****************
+	move.w	#0x5ff,loop_counter
+
+****************
+** フラグ変数の初期化
+*****************
+	move.b	#0,level_input
+	move.b	#1,enabled_check_mode		
+	move.b	#0,is_gameover
+
+	bra	MAIN
+
+*****************
 ** ループ
 *****************
 MAIN:
@@ -184,6 +198,12 @@ MAIN:
 ** システムコールによる RESET_TIMER の起動
 	move.l	#SYSCALL_NUM_RESET_TIMER,%D0
 	trap	#0
+
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#0, %d1
+	move.l	#words, %d2
+	move.l	#3, %d3
+	trap	#0
 	
 ** タイピングする文字列の出力
 	move.l	#SYSCALL_NUM_PUTSTRING, %d0
@@ -191,7 +211,7 @@ MAIN:
 	move.l	#words, %d2
 	move.l	#3, %d3
 	trap	#0
-	jsr	NEWLINE
+	jsr	put_newline
 
 **  タイピングする文字列をQueue2に格納
 	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
@@ -204,11 +224,11 @@ MAIN:
 	move.l	#SYSCALL_NUM_SET_TIMER, %D0
 	move.l	s2,%d1 | s2がlのため一旦d1にlで格納してからwにする
 	muls.w	#10000,%d1
-	move.l	#GAMEOVER, %d2
+	move.l	#TIMEOVER, %d2
 	trap	#0
-	bra	LOOP
+	bra	ECHOBACK_LOOP
 
-NEWLINE:
+put_newline:
 	move.l	#SYSCALL_NUM_PUTSTRING, %d0
 	move.l	#0, %d1
 	move.l	#newline, %d2
@@ -217,9 +237,15 @@ NEWLINE:
 	rts
 
 ******************************
-* ターミナルの入力をエコーバックする
+* エコーバック(文字入力のラグをなくすため空ループ)
 ******************************
-LOOP:
+ECHOBACK_LOOP:
+** 空ループ
+	sub.w	#1, loop_counter
+	bne	ECHOBACK_LOOP
+	move.w	#0x5ff, loop_counter
+
+** エコーバック
 	move.l	#SYSCALL_NUM_GETSTRING, %D0
 	move.l	#0, %D1 | ch = 0
 	move.l	#BUF, %D2 | p = #BUF
@@ -231,57 +257,12 @@ LOOP:
 	move.l	#BUF,%D2 | p = #BUF
 	trap	#0
 	cmpi.b	#1,is_gameover
-	beq	END
+	beq	GAMEOVER
 	cmpi.l	#0,s2
 	beq	SUCCESS
-	bra	LOOP
+	bra	ECHOBACK_LOOP
 	
-SUCCESS:
-	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
-	trap	#0
-
-	move.l	#SYSCALL_NUM_PUTSTRING,%D0
-	move.l	#0, %D1
-	move.l	#gameclear_msg, %D2
-	move.l	#14, %D3
-	trap	#0
-
-	move.b	#'s',LED7
-	move.b	#'u',LED6
-	move.b	#'c',LED5
-	move.b	#'c',LED4
-	move.b	#'e',LED3
-	move.b	#'s',LED2
-	move.b	#'s',LED1
-	move.b	#'!',LED0
-	bra	END
-
-END:
-| TODO: continue_msgが表示されない
-	move.l	#SYSCALL_NUM_PUTSTRING, %D0
-	move.l	#0, %D1
-	move.l	#continue_msg,%D2
-	move.l	#35, %d3
-	trap	#0
-	bra	END_LOOP
-
-END_LOOP:
-	move.l	#SYSCALL_NUM_GETSTRING, %D0
-	move.l	#0, %D1 | ch = 0
-	move.l	#BUF, %D2 | p = #BUF
-	move.l	#256, %D3 | size = 256
-	trap	#0
-| TODO: enterが認識されない
-	cmp.l	#0xd, BUF
-	beq	MAIN
-	bra	END_LOOP
-
-******************************
-* タイマ(ゲームオーバー用)
-******************************
 GAMEOVER:
-	movem.l	%D0-%D7/%A0-%A6,-(%SP)
-
 	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
 	trap	#0
 
@@ -299,8 +280,65 @@ GAMEOVER:
 	move.b	#'v',LED2
 	move.b	#'e',LED1
 	move.b	#'r',LED0
-	addi.b	#1,is_gameover
+	bra	END
 
+SUCCESS:
+	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
+	trap	#0
+
+	move.l	#SYSCALL_NUM_PUTSTRING,%d0
+	move.l	#0, %d1
+	move.l	#gameclear_msg, %d2
+	move.l	#14, %d3
+	trap	#0
+
+	move.b	#'s',LED7
+	move.b	#'u',LED6
+	move.b	#'c',LED5
+	move.b	#'c',LED4
+	move.b	#'e',LED3
+	move.b	#'s',LED2
+	move.b	#'s',LED1
+	move.b	#'!',LED0
+	bra	END
+
+END:
+| TODO: continue_msgが表示されない
+	move.b	#'3',LED7 | TODO: debug
+	move.l	#SYSCALL_NUM_PUTSTRING, %D0
+	move.l	#0, %D1
+	move.l	#continue_msg,%D2
+	move.l	#35, %d3
+	trap	#0
+
+	move.b	#'2',LED7 | TODO: debug
+	move.w	#0,enabled_check_mode | INTERGETでチェックが起きないようにする
+	bra	END_LOOP
+
+END_LOOP:
+	move.b	#'1',LED7 | TODO: debug
+** 空ループ
+	sub.w	#1, loop_counter
+	bne	END_LOOP
+
+** ENTERの受け付け
+	move.w	#0x5ff, loop_counter
+	move.l	#SYSCALL_NUM_GETSTRING, %D0 | Please Enter if you wanna continue
+	move.l	#0, %D1 | ch = 0
+	move.l	#BUF, %D2 | p = #BUF
+	move.l	#256, %D3 | size = 256
+	trap	#0
+| TODO: enterが認識されない
+	cmp.l	#0xd, BUF
+	beq	boot
+	bra	END_LOOP
+
+******************************
+* タイマ(タイムオーバー用)
+******************************
+TIMEOVER:
+	movem.l	%D0-%D7/%A0-%A6,-(%SP)
+	move.b	#1,is_gameover
 	movem.l	(%SP)+,%D0-%D7/%A0-%A6
 	rts
 ******************************************************
@@ -482,23 +520,30 @@ INTERGET:
 	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
 	bne	INTERGET_END	/*chが0でないなら何もせずに復帰*/
+	cmp.b	#1,enabled_check_mode | フラグ変数が1ならばチェックモード移行
+	beq	INTERGET_CHECK_MODE
+	jmp	INTERGET_INQ
+
+INTERGET_CHECK_MODE:
 	cmp.l	#0,s2
 	beq	INTERGET_END | タイピングする文字列がなければそのまま復帰
 
-	move.b	top2,temp_top
+	move.b	top2,temp_top | キューをコピー
 	move.b	bottom2,temp_bottom
 	move.l	out2,temp_out
 	move.l	in2,temp_in
 	move.l	s2,temp_s
-	move.l	#2,%d0
+	move.l	#2,%d0 | キュー2を選択
 	jsr	OUTQ | d0.l -> 0(fail) || 1(success), d1.b -> data
 	cmp.l	#0,%d0
 	beq	INTERGET_FAIL
 	move.b	#'n',LED7 | TODO: debug
-	cmp.b	%d1,%d2
+	cmp.b	%d1,%d2 | 入力とタイピング文字が同じかどうか
 	bne	INTERGET_FAIL
 	move.b	#'y',LED7 | TODO: debug
+	jmp	INTERGET_INQ
 
+INTERGET_INQ:
     	move.l	#0,%d0          /* キュー0を選択 */
 	jsr	INQ		/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
 	jmp	INTERGET_END
