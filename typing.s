@@ -76,15 +76,6 @@ gameclear_msg:
 continue_msg:
 	.ascii "Press Enter if you wanna continue\r\n"
 	.even
-correct_msg:
-	.ascii "collect: "
-	.even
-error_msg:
-	.ascii "wrong: "
-	.even
-speed_msg:
-	.ascii "typing speed(letter/min): "
-	.even
 newline:
 	.ascii "\r\n"
 	.even
@@ -174,7 +165,6 @@ USR_STK_TOP: | ユーザスタック領域の最後尾
 
 chosen_level:	.ds.b 1 | レベル格納用変数
 question_type:	.ds.b 1 | ループの種類を見分ける変数
-loop_counter:	.ds.w 1 | 空ループ用変数
 enabled_check_mode: 	.ds.b 1 | INTERGETで文字列チェックを行うかどうかのフラグ変数
 is_gameover:	.ds.b 1 | ゲームオーバーかどうかのフラグ変数
 .even
@@ -222,11 +212,6 @@ boot: * スーパーバイザ & 各種設定を行っている最中の割込禁
 	move.l	#0,s2
 
 ****************
-** ループ変数の初期化
-*****************
-	move.w	#0x5ff,loop_counter
-
-****************
 ** フラグ変数の初期化
 *****************
 	move.b	#0,chosen_level
@@ -249,19 +234,6 @@ MAIN:
 
 ** システムコールによる RESET_TIMER の起動
 	move.l	#SYSCALL_NUM_RESET_TIMER,%D0
-	trap	#0
-
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"の出力
-	move.l	#0, %d1
-	move.l	#q2_msg, %d2
-	move.l	#26, %d3
-	trap	#0
-		
-**  タイピングする文字列をQueue2に格納
-	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
-	move.l	#0, %d1
-	move.l	#str1, %d2
-	move.l	#3, %d3
 	trap	#0
 
 ** レベル選択
@@ -536,11 +508,6 @@ PUT_THIRD_QUESTION:
 * エコーバックループ 
 ******************************
 ECHOBACK_LOOP:
-** 空ループ
-	sub.w	#1, loop_counter
-	bne	ECHOBACK_LOOP
-	move.w	#0x5ff, loop_counter
-
 ** エコーバック
 	move.l	#SYSCALL_NUM_GETSTRING, %D0
 	move.l	#0, %D1 | ch = 0
@@ -617,12 +584,7 @@ END:
 	bra	END_LOOP
 
 END_LOOP:
-** 空ループ
-	sub.w	#1, loop_counter
-	bne	END_LOOP
-
 ** ENTERの受け付け
-	move.w	#0x5ff, loop_counter
 	move.l	#SYSCALL_NUM_GETSTRING, %d0 | Please Enter if you wanna continue
 	move.l	#0, %d1
 	move.l	#BUF, %d2
@@ -808,8 +770,6 @@ Queue_fail:
 **入力：ch->%d1.l data->%d2.b
 ***************************************************
 INTERGET:
-	move.w 	%sr,-(%sp)	/*srの値を一時退避*/
-	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
 	bne	INTERGET_END	/*chが0でないなら何もせずに復帰*/
 	cmp.b	#1,enabled_check_mode | フラグ変数が1ならばチェックモード移行
@@ -851,7 +811,6 @@ INTERGET_FAIL:
 	jmp	INTERGET_END
 
 INTERGET_END:
-	move.w  (%sp)+, %sr	/*スーパースタックから走行レベル回復*/
 	rts
 
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
@@ -884,8 +843,6 @@ INTERPUT_END:
 ******************************************************************************
 PUTSTRING:
 	movem.l	%a0/%d4,-(%sp)
-	move.w 	%sr,-(%sp)			/*走行レベル退避*/
-	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
 	bne	PUTSTRING_END 	/*ch≠0なら何もせず復帰*/
@@ -917,7 +874,6 @@ PUTSTRING_STEP2:
 	move.l %d4,%d0
 
 PUTSTRING_END:
-	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
 
@@ -929,8 +885,6 @@ PUTSTRING_END:
 ******************************************************************************
 PUT_TYPING_STRING:
 	movem.l	%a0/%d4,-(%sp)
-	move.w 	%sr,-(%sp)			/*走行レベル退避*/
-	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	
 	cmp.l	#0,%d1
 	bne	PUT_TYPING_STRING_END 	/*ch≠0なら何もせず復帰*/
@@ -959,7 +913,6 @@ PUT_TYPING_STRING_COUNT:
 	move.l %d4,%d0
 
 PUT_TYPING_STRING_END:
-	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
 
@@ -971,8 +924,6 @@ PUT_TYPING_STRING_END:
 ******************************************************************************
 GETSTRING:
 	movem.l	%a0/%d4,-(%sp)
-	move.w 	%sr,-(%sp)			/*走行レベル退避*/
-	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 
 	cmp.l	#0,%d1
 	bne	GETSTRING_END 	/*ch≠0なら何もせず復帰*/
@@ -999,7 +950,6 @@ GETSTRING_STEP1:
 	move.l %d4,%d0
 
 GETSTRING_END:
-	move.w  (%sp)+, %sr			/*走行レベル回復*/
 	movem.l	(%sp)+,%a0/%d4
 	rts
 ****************
