@@ -64,16 +64,66 @@
 *** 初期値のあるデータ領域
 ****************************************************************
 .section .data
-level_prompt: .ascii "Select your level(0-3): "
-gameover_msg: .ascii "\r\nGame Over\r\n"
-gameclear_msg: .ascii "\r\nGame Clear\r\n"
-continue_msg: .ascii "Press Enter if you wanna continue\r\n"
-correct_msg:  .ascii "collect: "
-error_msg:    .ascii "wrong: "
-speed_msg:    .ascii "typing speed(letter/min): "
-newline:      .ascii "\r\n"
-words:        .ascii "abc"
-
+level_msg:
+	.ascii "Select typing level(0-3): "
+	.even
+gameover_msg:
+	.ascii "\r\nGame Over\r\n"
+	.even
+gameclear_msg:
+	.ascii "\r\nGame Clear\r\n"
+	.even
+continue_msg:
+	.ascii "Press Enter if you wanna continue\r\n"
+	.even
+correct_msg:
+	.ascii "collect: "
+	.even
+error_msg:
+	.ascii "wrong: "
+	.even
+speed_msg:
+	.ascii "typing speed(letter/min): "
+	.even
+newline:
+	.ascii "\r\n"
+	.even
+level1:
+	.ascii	"1"
+	.even
+level2:
+	.ascii	"2"
+	.even
+level3:
+	.ascii	"3"
+	.even
+level1_msg:
+	.ascii	"level 1\r\n"
+	.even
+level2_msg:
+	.ascii	"level 2\r\n"
+	.even
+level3_msg:
+	.ascii	"level 3\r\n"
+	.even
+q1_msg:
+	.ascii	"********** Q1 **********\r\n"
+	.even
+q2_msg:
+	.ascii	"********** Q2 **********\r\n"
+	.even
+q3_msg:
+	.ascii	"********** Q3 **********\r\n"
+	.even
+str1:
+	.ascii	"abc"
+	.even
+str2:
+	.ascii	"yellow"
+	.even
+str3:
+	.ascii	"interface"
+	.even
 .even
 ***************************************************************
 ** スタック領域の確保
@@ -122,7 +172,8 @@ USR_STK:
 .even
 USR_STK_TOP: | ユーザスタック領域の最後尾
 
-level_input:	.ds.w 1 | レベル格納用変数
+chosen_level:	.ds.b 1 | レベル格納用変数
+question_type:	.ds.b 1 | ループの種類を見分ける変数
 loop_counter:	.ds.w 1 | 空ループ用変数
 enabled_check_mode: 	.ds.b 1 | INTERGETで文字列チェックを行うかどうかのフラグ変数
 is_gameover:	.ds.b 1 | ゲームオーバーかどうかのフラグ変数
@@ -178,7 +229,8 @@ boot: * スーパーバイザ & 各種設定を行っている最中の割込禁
 ****************
 ** フラグ変数の初期化
 *****************
-	move.b	#0,level_input
+	move.b	#0,chosen_level
+	move.b	#0,question_type
 	move.b	#1,enabled_check_mode		
 	move.b	#0,is_gameover
 
@@ -198,11 +250,141 @@ MAIN:
 ** システムコールによる RESET_TIMER の起動
 	move.l	#SYSCALL_NUM_RESET_TIMER,%D0
 	trap	#0
-	
+
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"の出力
+	move.l	#0, %d1
+	move.l	#q2_msg, %d2
+	move.l	#26, %d3
+	trap	#0
+		
+**  タイピングする文字列をQueue2に格納
+	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
+	move.l	#0, %d1
+	move.l	#str1, %d2
+	move.l	#3, %d3
+	trap	#0
+
+** レベル選択
+** システムコールによる SET_TIMER の起動
+	move.l	#SYSCALL_NUM_SET_TIMER, %d0 | システムコールによるSET_TIMERの起動
+	move.w	#50000, %d1 | 回答時間を５秒に設定
+	move.l	#JUDGE_LEVEL, %d2
+	trap	#0
+
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "Select typing level: "の出力
+	move.l	#0, %d1
+	move.l	#level_msg, %d2
+	move.l	#26, %d3
+	trap	#0
+	bra	JUDGE_QUESTION
+
+******************************
+* 問題の条件分岐
+******************************
+JUDGE_QUESTION:
+	cmp.b	#0,question_type | question_typeが0ならば空ループ
+	beq	JUDGE_QUESTION
+	cmp.b	#1,question_type | question_typeが1ならば問題1へ
+	beq	FIRST_QUESTION
+
+******************************
+* タイマ(レベル選択用)
+******************************
+JUDGE_LEVEL:
+	move.l	#SYSCALL_NUM_GETSTRING,%d0 | levelとして1文字だけ受け取る
+	move.l	#0,%d1
+	move.l	#BUF,%d2
+	move.l	#1,%d3
+	trap	#0
+
+	move.l	#BUF, %a0
+	move.l	#level1, %a1
+	move.b	(%a0), %d6
+	move.b	(%a1), %d7
+	cmp.b	%d6, %d7 | 入力が1かどうか
+	beq	SET_LEVEL1
+	move.l	#level2, %a1
+	move.b	(%a1), %d7
+	cmp.b	%d6, %d7 | 入力が2かどうか
+	beq	SET_LEVEL2
+	move.l	#level3, %a1
+	move.b	(%a1), %d7
+	cmp.b	%d6, %d7 | 入力が3かどうか
+	beq	SET_LEVEL3
+	bra	SET_LEVEL1 | それ以外はレベル1に設定
+
+SET_LEVEL1:
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "level 1"の出力
+	move.l	#0, %d1
+	move.l	#level1_msg, %d2
+	move.l	#9, %d3
+	trap	#0
+	move.b	#1,chosen_level | レベルを1に設定
+	bra	END_JUDGE_LEVEL	
+SET_LEVEL2:
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "level 2"の出力
+	move.l	#0, %d1
+	move.l	#level2_msg, %d2
+	move.l	#9, %d3
+	trap	#0
+	move.b	#2,chosen_level | レベルを2に設定
+	bra	END_JUDGE_LEVEL	
+SET_LEVEL3:
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "level 3"の出力
+	move.l	#0, %d1
+	move.l	#level3_msg, %d2
+	move.l	#9, %d3
+	trap	#0
+	move.b	#1,chosen_level | レベルを3に設定
+	bra	END_JUDGE_LEVEL	
+
+END_JUDGE_LEVEL:
+** システムコールによる RESET_TIMER の起動
+	move.l	#SYSCALL_NUM_RESET_TIMER, %d0
+	trap	#0
+	move.b	#1,question_type | 問題1に進むようにする
+	rts
+
+******************************
+* Q1
+******************************
+FIRST_QUESTION:
+** レベルを選択
+	cmp.w	#1, chosen_level
+	beq	FIRST_QUESTION_LEVEL1
+	cmp.w	#2, chosen_level
+	beq	FIRST_QUESTION_LEVEL2
+	cmp.w	#3, chosen_level
+	beq	FIRST_QUESTION_LEVEL3
+
+FIRST_QUESTION_LEVEL1:
+	move.w	#40000, %d1 | level1回答時間は4秒
+	bra	PUT_FIRST_QUESTION
+
+FIRST_QUESTION_LEVEL2:
+	move.w	#30000, %d1 | level1回答時間は3秒
+	bra	PUT_FIRST_QUESTION
+
+FIRST_QUESTION_LEVEL3:
+	move.w	#20000, %d1 | level1回答時間は2秒
+	bra	PUT_FIRST_QUESTION
+
+PUT_FIRST_QUESTION:	
+** システムコールによるSET_TIMERの起動
+	move.l	#SYSCALL_NUM_SET_TIMER, %d0
+	move.l	#TIMEUP, %d2
+	trap	#0
+
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q1 **********"の出力
+	move.l	#0, %d1
+	move.l	#q1_msg, %d2
+	move.l	#26, %d3
+	trap	#0
+
 ** タイピングする文字列の出力
 	move.l	#SYSCALL_NUM_PUTSTRING, %d0
 	move.l	#0, %d1
-	move.l	#words, %d2
+	move.l	#str1, %d2
 	move.l	#3, %d3
 	trap	#0
 	jsr	put_newline
@@ -210,16 +392,12 @@ MAIN:
 **  タイピングする文字列をQueue2に格納
 	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
 	move.l	#0, %d1
-	move.l	#words, %d2
+	move.l	#str1, %d2
 	move.l	#3, %d3
 	trap	#0
 
-** システムコールによる SET_TIMER の起動
-	move.l	#SYSCALL_NUM_SET_TIMER, %D0
-	move.l	s2,%d1 | s2がlのため一旦d1にlで格納してからwにする
-	muls.w	#10000,%d1
-	move.l	#TIMEOVER, %d2
-	trap	#0
+	move.b	#12,question_type | Q1-Q2のフラグ
+	move.b	#1,enabled_check_mode | INTERGETで文字列チェック
 	bra	ECHOBACK_LOOP
 
 put_newline:
@@ -230,8 +408,132 @@ put_newline:
 	trap	#0
 	rts
 
+TIMEUP:
+	movem.l	%D0-%D7/%A0-%A6,-(%SP)
+	move.b	#1,is_gameover
+	movem.l	(%SP)+,%D0-%D7/%A0-%A6
+	rts
+
 ******************************
-* エコーバック(文字入力のラグをなくすため空ループ)
+* Q2
+******************************
+SECOND_QUESTION:
+** システムコールによる RESET_TIMER の起動
+	move.l	#SYSCALL_NUM_RESET_TIMER, %d0
+	trap	#0
+
+** レベルを選択
+	cmp.w	#1, chosen_level
+	beq	SECOND_QUESTION_LEVEL1
+	cmp.w	#2, chosen_level
+	beq	SECOND_QUESTION_LEVEL2
+	cmp.w	#3, chosen_level
+	beq	SECOND_QUESTION_LEVEL3
+
+SECOND_QUESTION_LEVEL1:
+	move.w	#40000, %d1 | level1回答時間は4秒
+	bra	PUT_SECOND_QUESTION
+
+SECOND_QUESTION_LEVEL2:
+	move.w	#30000, %d1 | level1回答時間は3秒
+	bra	PUT_SECOND_QUESTION
+
+SECOND_QUESTION_LEVEL3:
+	move.w	#20000, %d1 | level1回答時間は2秒
+	bra	PUT_SECOND_QUESTION
+
+PUT_SECOND_QUESTION:	
+** システムコールによるSET_TIMERの起動
+	move.l	#SYSCALL_NUM_SET_TIMER, %d0
+	move.l	#TIMEUP, %d2
+	trap	#0
+
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"の出力
+	move.l	#0, %d1
+	move.l	#q2_msg, %d2
+	move.l	#26, %d3
+	trap	#0
+
+**  タイピングする文字列をQueue2に格納
+	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
+	move.l	#0, %d1
+	move.l	#str2, %d2
+	move.l	#6, %d3
+	trap	#0
+
+** タイピングする文字列の出力
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#0, %d1
+	move.l	#str2, %d2
+	move.l	#6, %d3
+	trap	#0
+	jsr	put_newline
+
+	move.b	#23,question_type | Q2-Q3のフラグ
+	move.b	#1,enabled_check_mode | INTERGETで文字列チェック
+	bra	ECHOBACK_LOOP
+
+******************************
+* Q3
+******************************
+THIRD_QUESTION:
+** システムコールによる RESET_TIMER の起動
+	move.l	#SYSCALL_NUM_RESET_TIMER, %d0
+	trap	#0
+
+** レベルを選択
+	cmp.w	#1, chosen_level
+	beq	THIRD_QUESTION_LEVEL1
+	cmp.w	#2, chosen_level
+	beq	THIRD_QUESTION_LEVEL2
+	cmp.w	#3, chosen_level
+	beq	THIRD_QUESTION_LEVEL3
+
+THIRD_QUESTION_LEVEL1:
+	move.w	#40000, %d1 | level1回答時間は4秒
+	bra	PUT_THIRD_QUESTION
+
+THIRD_QUESTION_LEVEL2:
+	move.w	#30000, %d1 | level1回答時間は3秒
+	bra	PUT_THIRD_QUESTION
+
+THIRD_QUESTION_LEVEL3:
+	move.w	#20000, %d1 | level1回答時間は2秒
+	bra	PUT_THIRD_QUESTION
+
+PUT_THIRD_QUESTION:	
+** システムコールによるSET_TIMERの起動
+	move.l	#SYSCALL_NUM_SET_TIMER, %d0
+	move.l	#TIMEUP, %d2
+	trap	#0
+
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"の出力
+	move.l	#0, %d1
+	move.l	#q3_msg, %d2
+	move.l	#26, %d3
+	trap	#0
+
+**  タイピングする文字列をQueue2に格納
+	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
+	move.l	#0, %d1
+	move.l	#str3, %d2
+	move.l	#9, %d3
+	trap	#0
+
+** タイピングする文字列の出力
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#0, %d1
+	move.l	#str3, %d2
+	move.l	#9, %d3
+	trap	#0
+	jsr	put_newline
+
+	move.b	#34,question_type | Q3終了フラグ
+	move.b	#1,enabled_check_mode | INTERGETで文字列チェック
+	bra	ECHOBACK_LOOP
+
+******************************
+* エコーバックループ 
 ******************************
 ECHOBACK_LOOP:
 ** 空ループ
@@ -250,12 +552,12 @@ ECHOBACK_LOOP:
 	move.l	#0, %D1 | ch = 0
 	move.l	#BUF,%D2 | p = #BUF
 	trap	#0
-	cmpi.b	#1,is_gameover
+	cmp.b	#1,is_gameover
 	beq	GAMEOVER
-	cmpi.l	#0,s2
-	beq	SUCCESS
+	cmp.l	#0,s2
+	beq	PROCEED
 	bra	ECHOBACK_LOOP
-	
+
 GAMEOVER:
 	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
 	trap	#0
@@ -276,6 +578,13 @@ GAMEOVER:
 	move.b	#'r',LED0
 	bra	END
 
+PROCEED:
+	cmp.b	#12,question_type | Q1-Q2の間の場合
+	beq	SECOND_QUESTION
+	cmp.b	#23,question_type | Q2-Q3の間の場合
+	beq	THIRD_QUESTION
+	bra	SUCCESS
+
 SUCCESS:
 	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
 	trap	#0
@@ -286,55 +595,44 @@ SUCCESS:
 	move.l	#14, %d3
 	trap	#0
 
-	move.b	#'s',LED7
-	move.b	#'u',LED6
-	move.b	#'c',LED5
-	move.b	#'c',LED4
-	move.b	#'e',LED3
-	move.b	#'s',LED2
-	move.b	#'s',LED1
-	move.b	#'!',LED0
+	| move.b	#'s',LED7
+	| move.b	#'u',LED6
+	| move.b	#'c',LED5
+	| move.b	#'c',LED4
+	| move.b	#'e',LED3
+	| move.b	#'s',LED2
+	| move.b	#'s',LED1
+	| move.b	#'!',LED0
 	bra	END
 
 END:
 | TODO: continue_msgが表示されない
-	move.b	#'3',LED7 | TODO: debug
 	move.l	#SYSCALL_NUM_PUTSTRING, %D0
 	move.l	#0, %D1
 	move.l	#continue_msg,%D2
 	move.l	#35, %d3
 	trap	#0
 
-	move.b	#'2',LED7 | TODO: debug
 	move.w	#0,enabled_check_mode | INTERGETでチェックが起きないようにする
 	bra	END_LOOP
 
 END_LOOP:
-	move.b	#'1',LED7 | TODO: debug
 ** 空ループ
 	sub.w	#1, loop_counter
 	bne	END_LOOP
 
 ** ENTERの受け付け
 	move.w	#0x5ff, loop_counter
-	move.l	#SYSCALL_NUM_GETSTRING, %D0 | Please Enter if you wanna continue
-	move.l	#0, %D1 | ch = 0
-	move.l	#BUF, %D2 | p = #BUF
-	move.l	#256, %D3 | size = 256
+	move.l	#SYSCALL_NUM_GETSTRING, %d0 | Please Enter if you wanna continue
+	move.l	#0, %d1
+	move.l	#BUF, %d2
+	move.l	#1, %d3
 	trap	#0
 | TODO: enterが認識されない
 	cmp.l	#0xd, BUF
 	beq	boot
 	bra	END_LOOP
 
-******************************
-* タイマ(タイムオーバー用)
-******************************
-TIMEOVER:
-	movem.l	%D0-%D7/%A0-%A6,-(%SP)
-	move.b	#1,is_gameover
-	movem.l	(%SP)+,%D0-%D7/%A0-%A6
-	rts
 ******************************************************
 ****Queue
 ******************************************************
@@ -625,7 +923,7 @@ PUTSTRING_END:
 
 ******************************************************************************
 ** PUT_TYPING_STRING(ch, p, size)
-**chの送信キューにp番地から始まるsizeバイトのデータを格納
+**chのタイプ用入力キューにp番地から始まるsizeバイトのデータを格納
 **入力： ch->%d1.l  p->%d2.l  size->%d3.l
 **戻り値：実際に送信したデータ数 sz->d0.l
 ******************************************************************************
@@ -736,7 +1034,7 @@ HardwareInterface:
 	move.w URX1,%d3
 	move.b %d3,%d2 /* data = %d2.b */
 	andi.w #0x2000,%d3
-	cmpi.w #0x2000,%d3 /* URX1の13bit目が1の場合INTERGET呼び出し */
+	cmp.w #0x2000,%d3 /* URX1の13bit目が1の場合INTERGET呼び出し */
 	beq INTERGET_PREPARE
 	move.w UTX1,%d1
 	and.w #0x8000,%d1 

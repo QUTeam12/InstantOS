@@ -8,6 +8,7 @@
 .equ SYSCALL_NUM_PUTSTRING, 2
 .equ SYSCALL_NUM_RESET_TIMER, 3
 .equ SYSCALL_NUM_SET_TIMER, 4
+.equ SYSCALL_NUM_PUT_TYPING_STRING, 5
 ***************
 ** レジスタ群の先頭
 ***************
@@ -63,15 +64,16 @@
 *** 初期値のあるデータ領域
 ****************************************************************
 .section .data
-TMSG:
-.ascii "******\r\n" | \r: 行頭へ (キャリッジリターン)
-.even | \n: 次の行へ (ラインフィード)
-TTC:
-.dc.w 0
-**putstring test用のデータ
+level_prompt: .ascii "Select your level(0-3): "
+gameover_msg: .ascii "\r\nGame Over\r\n"
+gameclear_msg: .ascii "\r\nGame Clear\r\n"
+continue_msg: .ascii "Press Enter if you wanna continue\r\n"
+correct_msg:  .ascii "collect: "
+error_msg:    .ascii "wrong: "
+speed_msg:    .ascii "typing speed(letter/min): "
+newline:      .ascii "\r\n"
+words:        .ascii "abc"
 
-TDATA1:		.ascii "0123456789ABCDEF"
-TDATA2:		.ascii "klmnopqrstuvwxyz"
 .even
 ***************************************************************
 ** スタック領域の確保
@@ -86,18 +88,29 @@ SYS_STK_TOP: | システムスタック領域の最後尾
 *****************************************************************
 **キュー
 *****************************************************************
-top0:		.ds.b	255			/*キューの戦闘の番地*/
+top0:		.ds.b	255			/*キューの先頭の番地*/
 bottom0:	.ds.b	1			/*キューの末尾の番地*/
 out0:		.ds.l	1			/*次に取り出すデータのある番地*/
 in0:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s0:		.ds.l	1			/*キューに溜まっているデータの数*/
 
-top1:		.ds.b	255			/*キューの戦闘の番地*/
+top1:		.ds.b	255			/*キューの先頭の番地*/
 bottom1:	.ds.b	1			/*キューの末尾の番地*/
 out1:		.ds.l	1			/*次に取り出すデータのある番地*/
 in1:		.ds.l	1 			/*次にデータを入れるべき番地*/
 s1:		.ds.l	1			/*キューに溜まっているデータの数*/
 
+top2:		.ds.b	255			/*キューの先頭の番地*/
+bottom2:	.ds.b	1			/*キューの末尾の番地*/
+out2:		.ds.l	1			/*次に取り出すデータのある番地*/
+in2:		.ds.l	1 			/*次にデータを入れるべき番地*/
+s2:		.ds.l	1			/*キューに溜まっているデータの数*/
+
+temp_top:	.ds.b	255			/*キューの先頭の番地*/
+temp_bottom:	.ds.b	1			/*キューの末尾の番地*/
+temp_out:	.ds.l	1			/*次に取り出すデータのある番地*/
+temp_in:	.ds.l	1 			/*次にデータを入れるべき番地*/
+temp_s:		.ds.l	1			/*キューに溜まっているデータの数*/
 ****************************************************************
 *** 初期値の無いデータ領域
 ****************************************************************
@@ -109,9 +122,11 @@ USR_STK:
 .even
 USR_STK_TOP: | ユーザスタック領域の最後尾
 
-
-WORK:		.ds.b 256			/* 受信制御部テスト　*/
-
+level_input:	.ds.w 1 | レベル格納用変数
+loop_counter:	.ds.w 1 | 空ループ用変数
+enabled_check_mode: 	.ds.b 1 | INTERGETで文字列チェックを行うかどうかのフラグ変数
+is_gameover:	.ds.b 1 | ゲームオーバーかどうかのフラグ変数
+.even
 ***************************************************************
 ** 初期化
 ** 内部デバイスレジスタには特定の値が設定されている．
@@ -120,226 +135,184 @@ WORK:		.ds.b 256			/* 受信制御部テスト　*/
 .section .text
 .even
 boot: * スーパーバイザ & 各種設定を行っている最中の割込禁止
-move.w #0x2700,%SR
-lea.l SYS_STK_TOP, %SP 			| Set SSP
+	move.w	#0x2700,%SR
+	lea.l	SYS_STK_TOP, %SP 			| Set SSP
 
 ****************
 ** 割り込みコントローラの初期化
 ****************
-move.b #0x40, IVR 				| ユーザ割り込みベクタ番号を0x40+level に設定．
-move.l #SYSCALL_INTERFACE, 0x080 | システムコールを設定
-move.l #HardwareInterface ,0x110| 送受信割込みを設定
-move.l #TimerInterface, 0x118 | タイマ割り込みの設定
-move.l #Mask_None,IMR 			| All Mask
+	move.b	#0x40, IVR | ユーザ割り込みベクタ番号を0x40+level に設定．
+	move.l	#SYSCALL_INTERFACE, 0x080 | システムコールを設定
+	move.l	#HardwareInterface ,0x110| 送受信割込みを設定
+	move.l	#TimerInterface, 0x118 | タイマ割り込みの設定
+	move.l	#Mask_None,IMR | All Mask
 
 ****************
 ** 送受信 (UART1) 関係の初期化 (割り込みレベルは 4 に固定されている)
 ****************
-move.w #U_Reset, USTCNT1 		| リセット
-move.w #U_Putpull, USTCNT1 	|受信割り込みのみ許可
-move.w #0x0038, UBAUD1 			| baud rate = 230400 bps
+	move.w	#U_Reset, USTCNT1 | リセット
+	move.w	#U_Putpull, USTCNT1 |受信割り込みのみ許可
+	move.w	#0x0038, UBAUD1 | baud rate = 230400 bps
 
 *****************
-**キュー初期化
+** キュー初期化
 *****************
-
-lea.l	top0,%a0
-move.l	%a0,in0
-move.l  %a0,out0
-move.l	#0,s0
-lea.l	top1,%a0
-move.l	%a0,in1
-move.l  %a0,out1
-move.l	#0,s1
-bra MAIN
+	lea.l	top0,%a0
+	move.l	%a0,in0
+	move.l  %a0,out0
+	move.l	#0,s0
+	lea.l	top1,%a0
+	move.l	%a0,in1
+	move.l  %a0,out1
+	move.l	#0,s1
+	lea.l	top2,%a0
+	move.l	%a0,in2
+	move.l  %a0,out2
+	move.l	#0,s2
 
 ****************
-**ループ
+** ループ変数の初期化
+*****************
+	move.w	#0x5ff,loop_counter
+
+****************
+** フラグ変数の初期化
+*****************
+	move.b	#0,level_input
+	move.b	#1,enabled_check_mode		
+	move.b	#0,is_gameover
+
+	bra	MAIN
+
+*****************
+** ループ
 *****************
 MAIN:
-**メイン以降をデバッグ
-    **jsr Put
-    move.w #0x2000,%SR				/* 割り込み許可．(スーパーバイザモードの場合) */
-    move.l #Mask_UART1_Timer,IMR 			| All UnMask
-    move.w #U_Put_Interupt, USTCNT1 	|受信割り込みのみ許可
-    **jmp	INQ_OUTQ_TEST
-    **jsr	PUTSTRING_TEST
-    **jsr	GETSTRING_TEST
-    move.w #0x0000, %SR | USER MODE, LEVEL 0
-    lea.l USR_STK_TOP,%SP | user stack の設定
+** ここからいじる
+	move.w	#0x2000,%SR | 割り込み許可．(スーパーバイザモードの場合)
+	move.l	#Mask_UART1_Timer,IMR | All UnMask
+	move.w	#U_Put_Interupt, USTCNT1 |受信割り込みのみ許可
+	move.w	#0x0000, %SR | USER MODE, LEVEL 0
+	lea.l	USR_STK_TOP,%SP | user stack の設定
+
 ** システムコールによる RESET_TIMER の起動
-    move.l #SYSCALL_NUM_RESET_TIMER,%D0
-    trap #0
+	move.l	#SYSCALL_NUM_RESET_TIMER,%D0
+	trap	#0
+	
+** タイピングする文字列の出力
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#0, %d1
+	move.l	#words, %d2
+	move.l	#3, %d3
+	trap	#0
+	jsr	put_newline
+
+**  タイピングする文字列をQueue2に格納
+	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
+	move.l	#0, %d1
+	move.l	#words, %d2
+	move.l	#3, %d3
+	trap	#0
+
 ** システムコールによる SET_TIMER の起動
-    move.l #SYSCALL_NUM_SET_TIMER, %D0
-    move.w #50000, %D1
-    move.l #TT, %D2
-    trap #0
-******************************
-* sys_GETSTRING, sys_PUTSTRING のテスト
-* ターミナルの入力をエコーバックする
-******************************
-LOOP:
-    **jmp HardwareInterface			/* シミュレータテスト用 */
-    move.l #SYSCALL_NUM_GETSTRING, %D0
-    move.l #0, %D1 | ch = 0
-    move.l #BUF, %D2 | p = #BUF
-    move.l #256, %D3 | size = 256
-    trap #0
-    move.l %D0, %D3 | size = %D0 (length of given string)
-    move.l #SYSCALL_NUM_PUTSTRING, %D0
-    move.l #0, %D1 | ch = 0
-    move.l #BUF,%D2 | p = #BUF
-    trap #0
-    bra LOOP
-******************************
-* タイマのテスト
-* ’******’ を表示し改行する．
-* ５回実行すると，RESET_TIMER をする．
-******************************
-TT:
-    movem.l %D0-%D7/%A0-%A6,-(%SP)
-    cmpi.w #5,TTC | TTC カウンタで 5 回実行したかどうか数える
-    beq TTKILL | 5 回実行したら，タイマを止める
-    move.l #SYSCALL_NUM_PUTSTRING,%D0
-    move.l #0, %D1 | ch = 0
-    move.l #TMSG, %D2 | p = #TMSG
-    move.l #8, %D3 | size = 8
-    trap #0
-    addi.w #1,TTC | TTC カウンタを 1 つ増やして
-    bra TTEND | そのまま戻る
-TTKILL:
-    move.l #SYSCALL_NUM_RESET_TIMER,%D0
-    trap #0
-TTEND:
-    movem.l (%SP)+,%D0-%D7/%A0-%A6
-    rts
-*********************************************************
-**TEST
-********************************************************
-********受信制御部のテスト
-GETSTRING_TEST:
-	move.b #'T',LED5
-	move.l	#0xfffff,%d4
-GETSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	GETSTRING_TEST2
-	jmp	GETSTRING_TEST_LOOP
-GETSTRING_TEST2:
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.l #256, %d3
-	move.b #'G',LED7
-	jsr GETSTRING
-	move.l %d0, %d3
-	moveq #0 , %d1
-	lea.l WORK, %a0
-	move.l %a0, %d2
-	move.b #'P',LED6
-	jsr PUTSTRING
-	move.b #'S',LED5
-	jmp GETSTRING_TEST
-	
-********INTERPUTの動作テスト
-********キューに文字を格納する
-Put:
-    movem.l %d0-%d2, -(%sp)
-    move.b #0x61, %d1  |d0='a'
-    move.b #16, %d2
-PutLoop:
-    move.l #1,%d0
-    jsr INQ
-    cmpi.l #0,%d0
-    beq EndPut
-    subq.b #1 , %d2
-    beq EndPutLoop
-    bra PutLoop
-EndPutLoop:
-    addi.b #1,%d1
-    move.b #16,%d2
-    bra PutLoop
+	move.l	#SYSCALL_NUM_SET_TIMER, %D0
+	move.l	s2,%d1 | s2がlのため一旦d1にlで格納してからwにする
+	muls.w	#10000,%d1
+	move.l	#TIMEOVER, %d2
+	trap	#0
+	bra	ECHOBACK_LOOP
 
-EndPut:
-    move.l #256, s1
-    movem.l (%sp)+,%d0-%d2 
+put_newline:
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#0, %d1
+	move.l	#newline, %d2
+	move.l	#2, %d3
+	trap	#0
 	rts
 
-********PUTSTRINGの動作テスト
-********キューに文字を格納する
+******************************
+* エコーバック(文字入力のラグをなくすため空ループ)
+******************************
+ECHOBACK_LOOP:
+** 空ループ
+	sub.w	#1, loop_counter
+	bne	ECHOBACK_LOOP
+	move.w	#0x5ff, loop_counter
 
-PUTSTRING_TEST:
-	move.l	#0,%d1
-	lea.l 	TDATA1,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
+** エコーバック
+	move.l	#SYSCALL_NUM_GETSTRING, %D0
+	move.l	#0, %D1 | ch = 0
+	move.l	#BUF, %D2 | p = #BUF
+	move.l	#256, %D3 | size = 256
+	trap	#0
+	move.l	%D0, %D3 | size = %D0 (length of given string)
+	move.l	#SYSCALL_NUM_PUTSTRING, %D0
+	move.l	#0, %D1 | ch = 0
+	move.l	#BUF,%D2 | p = #BUF
+	trap	#0
+	cmpi.b	#1,is_gameover
+	beq	GAMEOVER
+	cmpi.l	#0,s2
+	beq	SUCCESS
+	bra	ECHOBACK_LOOP
 	
-PUTSTRING_TEST_LOOP:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP
-	
-PUTSTRING_TEST2:
-	move.l	#0,%d1
-	lea.l 	TDATA2,%a2
-	move.l	%a2,%d2
-	move.l 	#16,%d3
-	move.l #2,%d0
-	trap #0
-	move.l	#1000,%d4
-	jmp	PUTSTRING_TEST_LOOP3
-	jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP2:
-	jmp	PUTSTRING_TEST_LOOP2
-	
-	**jmp	PUTSTRING_TEST2
-	
-PUTSTRING_TEST_LOOP3:
-	sub.l	#1,%d4
-	beq	PUTSTRING_TEST2
-	jmp	PUTSTRING_TEST_LOOP3
+GAMEOVER:
+	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
+	trap	#0
 
-**inq outqてすと
+	move.l	#SYSCALL_NUM_PUTSTRING,%d0
+	move.l	#0, %d1
+	move.l	#gameover_msg, %d2
+	move.l	#13, %d3
+	trap	#0
 
+	move.b	#'g',LED7
+	move.b	#'a',LED6
+	move.b	#'m',LED5
+	move.b	#'e',LED4
+	move.b	#'o',LED3
+	move.b	#'v',LED2
+	move.b	#'e',LED1
+	move.b	#'r',LED0
+	bra	END
 
-INQ_OUTQ_TEST:
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	INQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jsr 	OUTQ_INPUT
-	jmp	INQ_OUTQ_TEST
-	
+SUCCESS:
+	move.l	#SYSCALL_NUM_RESET_TIMER,%d0
+	trap	#0
 
-INQ_INPUT:
-	move.l #0,%d0
-	move.b #0x61,%d1
-	jsr INQ
+	move.l	#SYSCALL_NUM_PUTSTRING,%d0
+	move.l	#0, %d1
+	move.l	#gameclear_msg, %d2
+	move.l	#14, %d3
+	trap	#0
+
+	move.b	#'s',LED7
+	move.b	#'u',LED6
+	move.b	#'c',LED5
+	move.b	#'c',LED4
+	move.b	#'e',LED3
+	move.b	#'s',LED2
+	move.b	#'s',LED1
+	move.b	#'!',LED0
+	bra	END
+
+END:
+	bra	END_LOOP
+
+END_LOOP:
+	bra	END_LOOP
+
+******************************
+* タイマ(タイムオーバー用)
+******************************
+TIMEOVER:
+	movem.l	%D0-%D7/%A0-%A6,-(%SP)
+	move.b	#1,is_gameover
+	movem.l	(%SP)+,%D0-%D7/%A0-%A6
 	rts
-
-OUTQ_INPUT:
-	move.l #0,%d0
-	jsr OUTQ
-	rts
-	
 ******************************************************
 ****Queue
 ******************************************************
-
 INQ:
 	**	番号noのキューにデータをいれる
 	**	入力 no->d0.l	書き込む8bitdata->d1.b
@@ -351,9 +324,10 @@ INQ:
 	beq	INQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
 	beq	INQ1
+	cmp.l   #2,%d0
+	beq	INQ2
 	jmp	Queue_fail		/*キュー番号が存在しない*/
 
-	
 INQ0:	
 	cmp.l	#256,s0
 	beq	Queue_fail		/*キューが満杯で失敗*/
@@ -368,7 +342,6 @@ INQ0:
 INQ0_step1:
 	lea.l	top0,%a0
 	move.l	%a0,in0
-	
 
 INQ0_step2:
 	add.l	#1,s0 			/*s++*/
@@ -399,7 +372,27 @@ INQ1_step2:
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
+INQ2:	
+	cmp.l	#256,s2
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	in2,%a0			
+	move.b	%d1,(%a0)		/*データをキューに書き込み*/
+	lea.l	bottom2,%a1
+	cmp.l	%a1,%a0
+	beq	INQ2_step1		/*in==bottomのときin=top*/
+	add.l	#1,in2			/*in++*/
+	jmp	INQ2_step2
 
+INQ2_step1:
+	lea.l	top2,%a0
+	move.l	%a0,in2
+
+INQ2_step2:
+	add.l	#1,s2 			/*s++*/
+	move.l	#1,%d0			/*成功を報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
+	rts
 OUTQ:
 	**	番号noのキューからデータを一つ取り出す
 	**	入力 キューの番号->d0.l
@@ -411,8 +404,9 @@ OUTQ:
 	beq	OUTQ0
 	cmp.l 	#1,%d0			/*キュー番号が1*/
 	beq	OUTQ1
+	cmp.l	#2,%d0
+	beq	OUTQ2
 	jmp	Queue_fail		/*キュー番号が存在しない*/
-	
 
 OUTQ0:	
 	cmp.l	#0,s0
@@ -458,13 +452,33 @@ OUTQ1_step2:
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
 
-	
+OUTQ2:	
+	cmp.l	#0,s2
+	beq	Queue_fail		/*キューが満杯で失敗*/
+	move.l	out2,%a0			
+	move.b	(%a0),%d1		/*データをキューから取り出し*/
+	lea.l	bottom2,%a1
+	cmp.l	%a1,%a0
+	beq	OUTQ2_step1		/*out==bottomのときout=top*/
+	add.l	#1,out2			/*out++*/
+	jmp	OUTQ2_step2
+
+OUTQ2_step1:
+	lea.l	top2,%a0
+	move.l	%a0,out2
+
+OUTQ2_step2:
+	sub.l	#1,s2 			/*s--*/
+	move.l	#1,%d0			/*成功を報告*/
+	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
+	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
+	rts
+
 Queue_fail:
 	move.l #0,%d0			/*失敗の報告*/
 	move.w  (%sp)+, %sr			/*スーパースタックから走行レベル回復*/
 	movem.l (%sp)+,%a0/%a1/%d2	/*切り替え前のスタックからレジスタ回復*/
 	rts
-
  
 ***************************************************
 **INTERGET(ch,data)　受信データを受信キューに格納する
@@ -475,15 +489,47 @@ INTERGET:
 	move.w 	#0x2700,%sr	/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
 	bne	INTERGET_END	/*chが0でないなら何もせずに復帰*/
-	
+	cmp.b	#1,enabled_check_mode | フラグ変数が1ならばチェックモード移行
+	beq	INTERGET_CHECK_MODE
+	jmp	INTERGET_INQ
+
+INTERGET_CHECK_MODE:
+	cmp.l	#0,s2
+	beq	INTERGET_END | タイピングする文字列がなければそのまま復帰
+
+	move.b	top2,temp_top | キューをコピー
+	move.b	bottom2,temp_bottom
+	move.l	out2,temp_out
+	move.l	in2,temp_in
+	move.l	s2,temp_s
+	move.l	#2,%d0 | キュー2を選択
+	jsr	OUTQ | d0.l -> 0(fail) || 1(success), d1.b -> data
+	cmp.l	#0,%d0
+	beq	INTERGET_FAIL
+	move.b	#'n',LED7 | TODO: debug
+	cmp.b	%d1,%d2 | 入力とタイピング文字が同じかどうか
+	bne	INTERGET_FAIL
+	move.b	#'y',LED7 | TODO: debug
+	jmp	INTERGET_INQ
+
+INTERGET_INQ:
     	move.l	#0,%d0          /* キュー0を選択 */
-	move.b	%d2,%d1		
 	jsr	INQ		/*INQ(no->%d0.l,data->%d1.b) %D0.lで結果を報告*/
+	jmp	INTERGET_END
+
+INTERGET_FAIL:
+	move.b	temp_top,top2
+	move.b	temp_bottom,bottom2
+	move.l	temp_out,out2
+	move.l	temp_in,in2
+	move.l	temp_s,s2
+	jmp	INTERGET_END
+
+	jmp	INTERGET_END
 
 INTERGET_END:
 	move.w  (%sp)+, %sr	/*スーパースタックから走行レベル回復*/
 	rts
-
 
 /* INTERPUT(ch)　チャンネルchの送信キューからデータを一つ取り出し実際に送信する（UTX1に書き込む）
 入力：ch->%D1.l */
@@ -492,7 +538,7 @@ INTERPUT:
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
 	cmp.l 	#0,%d1
 	bne	INTERPUT_END		/*chが0でないなら何もせずに復帰*/
-    	move.l #1 , %d0          /* キュー1を選択 */
+    	move.l	#1, %d0          /* キュー1を選択 */
 	jsr	OUTQ		        /*data->%D1.b  %D0に結果を格納*/
 	cmp.l	#0,%d0
 	beq	INTERPUT_fail
@@ -552,8 +598,49 @@ PUTSTRING_END:
 	movem.l	(%sp)+,%a0/%d4
 	rts
 
+******************************************************************************
+** PUT_TYPING_STRING(ch, p, size)
+**chの送信キューにp番地から始まるsizeバイトのデータを格納
+**入力： ch->%d1.l  p->%d2.l  size->%d3.l
+**戻り値：実際に送信したデータ数 sz->d0.l
+******************************************************************************
+PUT_TYPING_STRING:
+	movem.l	%a0/%d4,-(%sp)
+	move.w 	%sr,-(%sp)			/*走行レベル退避*/
+	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
+	
+	cmp.l	#0,%d1
+	bne	PUT_TYPING_STRING_END 	/*ch≠0なら何もせず復帰*/
 
- ******************************************************************************
+	move.l	#0,%d4		/*sz->%d4*/
+	movea.l %d2,%a0 	/*i->a0*/ 
+	
+	cmp.l	#0,%d3
+	beq	PUT_TYPING_STRING_COUNT /*size=0なら分岐*/
+	
+PUT_TYPING_STRING_LOOP:
+	cmp.l	%d4,%d3
+	beq	PUT_TYPING_STRING_COUNT /*sz=sizeなら分岐*/
+
+	move.l	#2,%d0
+	move.b 	(%a0)+,%d1
+	jsr	INQ 		/*INQ(no->d0.l,data->d1.b)*/
+
+	cmp.l	#0,%d0
+	beq	PUT_TYPING_STRING_COUNT /*INQが失敗なら分岐*/
+
+	addq.l	#1,%d4		/*sz++*/
+	bra	PUT_TYPING_STRING_LOOP 
+	
+PUT_TYPING_STRING_COUNT:
+	move.l %d4,%d0
+
+PUT_TYPING_STRING_END:
+	move.w  (%sp)+, %sr			/*走行レベル回復*/
+	movem.l	(%sp)+,%a0/%d4
+	rts
+
+******************************************************************************
 ** GETSTRING(ch, p, size)
 **chの受信キューからsizeバイトのデータを取り出し、p番地以降にコピーする
 **入力： ch->%d1.l  p->%d2.l  size->%d3.l
@@ -563,7 +650,7 @@ GETSTRING:
 	movem.l	%a0/%d4,-(%sp)
 	move.w 	%sr,-(%sp)			/*走行レベル退避*/
 	move.w 	#0x2700,%sr			/*割り込み禁止(走行レベル7)*/
-	
+
 	cmp.l	#0,%d1
 	bne	GETSTRING_END 	/*ch≠0なら何もせず復帰*/
 
@@ -609,13 +696,11 @@ RESET_TIMER:
 **      割り込み時に起動するルーチンの先頭アドレスd2.l
 ** 戻り値なし
 ******************
-/* TODO: レジスタの管理。レジスタ変更予定。*/
 SET_TIMER:
 	movem.l	%a0/%d1,-(%sp)
-	lea.l   task_p, %a0 /* TODO: step9までお預け */
-	move.l  %d2, (%a0) |task_p=入力d2 /* TODO: step9までお預け */
+	lea.l   task_p, %a0
+	move.l  %d2, (%a0) |task_p=入力d2
 	move.w  #0xce, TPRER1 |1カウント0.1msecに設定
-	move.w  #0xc350, %d1 /* タイマ間隔のテスト値。5sec。*/
 	move.w  %d1, TCMP1 |割り込み発生周期を設定
 	move.w  #0x15, TCTL1 |タイマ使用許可
 	movem.l	(%sp)+,%a0/%d1
@@ -629,7 +714,6 @@ HardwareInterface:
 	cmpi.w #0x2000,%d3 /* URX1の13bit目が1の場合INTERGET呼び出し */
 	beq INTERGET_PREPARE
 	move.w UTX1,%d1
-	**move #0x8000,%d1
 	and.w #0x8000,%d1 
 	cmp #0x8000,%d1
 	beq INTERPUT_PREPARE
@@ -661,9 +745,9 @@ return:
 ** 入力、戻り値なし
 ******************
 CALL_RP:
-	lea.l   task_p, %a0 /* TODO: step9までお預け */
-	movea.l (%a0), %a1 |a1=task_p /* TODO: step9までお預け */
-	jsr     (%a1) |task_pへジャンプ  /* TODO: step9までお預け */
+	lea.l   task_p, %a0
+	movea.l (%a0), %a1 |a1=task_p
+	jsr     (%a1) |task_pへジャンプ
 	rts
 
 	
@@ -684,6 +768,9 @@ SYSCALL_INTERFACE:
 	cmp.l #4,%d0
 	beq   CALL_SET_TIMER
 	
+	cmp.l	#5,%d0
+	beq	CALL_PUT_TYPING_STRING
+
 	rte
 
 CALL_GETSTRING:
@@ -700,5 +787,9 @@ CALL_RESET_TIMER:
 	
 CALL_SET_TIMER:
 	jsr SET_TIMER
+	rte
+
+CALL_PUT_TYPING_STRING:
+	jsr PUT_TYPING_STRING
 	rte
 .end
