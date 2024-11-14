@@ -98,13 +98,13 @@ level3_msg:
 	.ascii	"level 3\r\n"
 	.even
 q1_msg:
-	.ascii	"********** Q1 **********\r\n"
+	.ascii	"\r\nQ1\r\nabc\r\n" | 11
 	.even
 q2_msg:
-	.ascii	"********** Q2 **********\r\n"
+	.ascii	"\r\nQ2\r\nyellow\r\n" | 14
 	.even
 q3_msg:
-	.ascii	"********** Q3 **********\r\n"
+	.ascii	"\r\nQ3\r\ninterface\r\n" | 17
 	.even
 str1:
 	.ascii	"abc"
@@ -347,20 +347,6 @@ PUT_FIRST_QUESTION:
 	move.l	#TIMEUP, %d2
 	trap	#0
 
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q1 **********"の出力
-	move.l	#0, %d1
-	move.l	#q1_msg, %d2
-	move.l	#26, %d3
-	trap	#0
-
-** タイピングする文字列の出力
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0
-	move.l	#0, %d1
-	move.l	#str1, %d2
-	move.l	#3, %d3
-	trap	#0
-	jsr	put_newline
-
 **  タイピングする文字列をQueue2に格納
 	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
 	move.l	#0, %d1
@@ -368,17 +354,16 @@ PUT_FIRST_QUESTION:
 	move.l	#3, %d3
 	trap	#0
 
+** タイピングする文字列の出力
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q1 **********"とタイピング文字列の出力
+	move.l	#0, %d1
+	move.l	#q1_msg, %d2
+	move.l	#11, %d3
+	trap	#0
+
 	move.b	#12,question_type | Q1-Q2のフラグ
 	move.b	#1,enabled_check_mode | INTERGETで文字列チェック
 	bra	ECHOBACK_LOOP
-
-put_newline:
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0
-	move.l	#0, %d1
-	move.l	#newline, %d2
-	move.l	#2, %d3
-	trap	#0
-	rts
 
 TIMEUP:
 	movem.l	%D0-%D7/%A0-%A6,-(%SP)
@@ -420,12 +405,6 @@ PUT_SECOND_QUESTION:
 	move.l	#TIMEUP, %d2
 	trap	#0
 
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"の出力
-	move.l	#0, %d1
-	move.l	#q2_msg, %d2
-	move.l	#26, %d3
-	trap	#0
-
 **  タイピングする文字列をQueue2に格納
 	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
 	move.l	#0, %d1
@@ -434,12 +413,11 @@ PUT_SECOND_QUESTION:
 	trap	#0
 
 ** タイピングする文字列の出力
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"とタイピング文字列の出力
 	move.l	#0, %d1
-	move.l	#str2, %d2
-	move.l	#6, %d3
+	move.l	#q2_msg, %d2
+	move.l	#14, %d3
 	trap	#0
-	jsr	put_newline
 
 	move.b	#23,question_type | Q2-Q3のフラグ
 	move.b	#1,enabled_check_mode | INTERGETで文字列チェック
@@ -479,12 +457,6 @@ PUT_THIRD_QUESTION:
 	move.l	#TIMEUP, %d2
 	trap	#0
 
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"の出力
-	move.l	#0, %d1
-	move.l	#q3_msg, %d2
-	move.l	#26, %d3
-	trap	#0
-
 **  タイピングする文字列をQueue2に格納
 	move.l	#SYSCALL_NUM_PUT_TYPING_STRING, %d0
 	move.l	#0, %d1
@@ -493,12 +465,11 @@ PUT_THIRD_QUESTION:
 	trap	#0
 
 ** タイピングする文字列の出力
-	move.l	#SYSCALL_NUM_PUTSTRING, %d0
+	move.l	#SYSCALL_NUM_PUTSTRING, %d0 | "********** Q2 **********"とタイピング文字列の出力
 	move.l	#0, %d1
-	move.l	#str3, %d2
-	move.l	#9, %d3
+	move.l	#q3_msg, %d2
+	move.l	#17, %d3
 	trap	#0
-	jsr	put_newline
 
 	move.b	#34,question_type | Q3終了フラグ
 	move.b	#1,enabled_check_mode | INTERGETで文字列チェック
@@ -562,37 +533,20 @@ SUCCESS:
 	move.l	#14, %d3
 	trap	#0
 
-	| move.b	#'s',LED7
-	| move.b	#'u',LED6
-	| move.b	#'c',LED5
-	| move.b	#'c',LED4
-	| move.b	#'e',LED3
-	| move.b	#'s',LED2
-	| move.b	#'s',LED1
-	| move.b	#'!',LED0
+	move.b	#'s',LED7
+	move.b	#'u',LED6
+	move.b	#'c',LED5
+	move.b	#'c',LED4
+	move.b	#'e',LED3
+	move.b	#'s',LED2
+	move.b	#'s',LED1
+	move.b	#'!',LED0
 	bra	END
 
 END:
-| TODO: continue_msgが表示されない
-	move.l	#SYSCALL_NUM_PUTSTRING, %D0
-	move.l	#0, %D1
-	move.l	#continue_msg,%D2
-	move.l	#35, %d3
-	trap	#0
-
-	move.w	#0,enabled_check_mode | INTERGETでチェックが起きないようにする
 	bra	END_LOOP
 
 END_LOOP:
-** ENTERの受け付け
-	move.l	#SYSCALL_NUM_GETSTRING, %d0 | Please Enter if you wanna continue
-	move.l	#0, %d1
-	move.l	#BUF, %d2
-	move.l	#1, %d3
-	trap	#0
-| TODO: enterが認識されない
-	cmp.l	#0xd, BUF
-	beq	boot
 	bra	END_LOOP
 
 ******************************************************
